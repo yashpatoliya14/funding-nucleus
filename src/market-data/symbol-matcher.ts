@@ -29,7 +29,7 @@ export class SymbolMatcher {
 
     const bybitMap = new Map<string, InstrumentInfo>();
     for (const inst of bybitInsts) {
-      if (inst.isActive && inst.quoteAsset === 'USDT' && inst.settleAsset === 'USDT') {
+      if (inst.isActive && inst.contractType === 'PERPETUAL' && inst.quoteAsset === 'USDT' && inst.settleAsset === 'USDT') {
         bybitMap.set(inst.baseAsset.toUpperCase(), inst);
       }
     }
@@ -37,7 +37,7 @@ export class SymbolMatcher {
     const matchedPairs: MatchedPair[] = [];
 
     for (const bInst of binanceInsts) {
-      if (!bInst.isActive || bInst.quoteAsset !== 'USDT' || bInst.settleAsset !== 'USDT') {
+      if (!bInst.isActive || bInst.contractType !== 'PERPETUAL' || bInst.quoteAsset !== 'USDT' || bInst.settleAsset !== 'USDT') {
         continue;
       }
 

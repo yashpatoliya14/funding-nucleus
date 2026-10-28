@@ -34,7 +34,7 @@ export class ExecutionReconciliation {
     const now = new Date().toISOString();
     if (bPos) {
       this.snapshotRepo.create({
-        id: `snap-b-${Date.now()}`,
+        id: `snap-b-${Date.now()}-${Math.floor(Math.random() * 1000000)}`,
         trade_id: tradeId,
         exchange: 'binance',
         symbol: binanceSymbol,
@@ -50,7 +50,7 @@ export class ExecutionReconciliation {
 
     if (byPos) {
       this.snapshotRepo.create({
-        id: `snap-by-${Date.now()}`,
+        id: `snap-by-${Date.now()}-${Math.floor(Math.random() * 1000000)}`,
         trade_id: tradeId,
         exchange: 'bybit',
         symbol: bybitSymbol,

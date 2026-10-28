@@ -192,12 +192,19 @@ describe('Execution Failure Tests (Part 2 Scenarios)', () => {
     binanceClient.setFailureMode('TIMEOUT');
 
     const candidate = createDummyOpportunity();
-    // In this scenario, timeout during entry submission is caught
-    await expect(executionEngine.executeTrade(candidate, true)).rejects.toThrow();
+    // In this scenario, timeout during entry submission is caught and trade fails gracefully
+    const trade = await executionEngine.executeTrade(candidate, true);
+    expect(trade.state).toBe('FAILED');
 
-    // Verify order was NOT blindly duplicated in database
-    const orders = orderRepo.getByTradeId(candidate.opportunity.mapping.id);
-    expect(orders.length).toBeLessThanOrEqual(2);
+    // Verify order was NOT blindly duplicated on Binance
+    const orders = orderRepo.getByTradeId(trade.id);
+    const binanceOrders = orders.filter((o) => o.exchange === 'binance');
+    expect(binanceOrders.length).toBe(1); // Exactly 1 attempt, no blind duplicate submission
+    // Both positions verified flat
+    const bPos = await binanceClient.getPositions('BTCUSDT');
+    const byPos = await bybitClient.getPositions('BTCUSDT');
+    expect(bPos.length === 0 || bPos[0]?.quantity.isZero() || bPos[0]?.side === 'FLAT').toBe(true);
+    expect(byPos.length === 0 || byPos[0]?.quantity.isZero() || byPos[0]?.side === 'FLAT').toBe(true);
   });
 
   // Scenario 4: Partial fill -> calculate mismatch and hedge/flatten
@@ -230,6 +237,46 @@ describe('Execution Failure Tests (Part 2 Scenarios)', () => {
       orderType: 'MARKET',
       quantity: toDecimal('0.005'), // $325 (50% mismatch > 0.5% tolerance)
       clientOrderId: 'mismatch-by-1',
+    });
+
+    fundingEventRepo.upsert({
+      id: 'fe-mismatch-1',
+      coin: 'BTC',
+      binance_funding_rate: '0.0035',
+      bybit_funding_rate: '0.0001',
+      funding_rate_diff: '0.0034',
+      binance_funding_time: new Date().toISOString(),
+      bybit_funding_time: new Date().toISOString(),
+      target_funding_time: new Date().toISOString(),
+      is_aligned: 1,
+      status: 'PENDING',
+      created_at: new Date().toISOString(),
+    });
+
+    tradeRepo.create({
+      id: 'trade-mismatch-1',
+      coin: 'BTC',
+      binance_symbol: 'BTCUSDT',
+      bybit_symbol: 'BTCUSDT',
+      funding_event_id: 'fe-mismatch-1',
+      state: 'ENTRY_SUBMITTED',
+      direction: 'SHORT_BINANCE_LONG_BYBIT',
+      target_notional_usd: '650',
+      binance_entry_qty: '0.010',
+      bybit_entry_qty: '0.005',
+      binance_exit_qty: '0',
+      bybit_exit_qty: '0',
+      expected_funding_edge_pct: '0.34',
+      expected_net_profit_usd: '1.5',
+      realized_pnl_usd: '0',
+      total_fees_usd: '0',
+      total_funding_usd: '0',
+      net_pnl_usd: '0',
+      is_simulated: 1,
+      error_message: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      completed_at: null,
     });
 
     const recov = await hedgeRecovery.recover(

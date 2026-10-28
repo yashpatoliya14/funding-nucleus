@@ -32,10 +32,9 @@ describe('Unit Tests: SQLite Persistence & Recovery', () => {
     fundingTxRepo = new FundingTransactionRepository(db);
     transitionRepo = new StateTransitionRepository(db);
     dailyRepo = new DailySummaryRepository(db);
-  });
 
-  it('saves and retrieves a trade record with exact decimal representation', () => {
     const now = new Date().toISOString();
+    // Default parent records for foreign key integrity
     fundingRepo.upsert({
       id: 'fe-btc-1',
       coin: 'BTC',
@@ -75,7 +74,21 @@ describe('Unit Tests: SQLite Persistence & Recovery', () => {
       updated_at: now,
       completed_at: null,
     });
+  });
 
+  it('preserves exact string-serialized decimal precision in daily summaries', () => {
+    dailyRepo.getOrCreateToday();
+
+    // Add $0.123456789012345678 trading PnL
+    const precisePnl = toDecimal('0.123456789012345678');
+    dailyRepo.addTradeResult(precisePnl, toDecimal('0.5'), toDecimal('0.05'));
+
+    const today = dailyRepo.getOrCreateToday();
+    expect(today.total_trading_pnl_usd).toBe('0.123456789012345678');
+    expect(today.trade_count).toBe(1);
+  });
+
+  it('saves and retrieves a trade record with exact decimal representation', () => {
     const retrieved = tradeRepo.getById('trade-uuid-1');
     expect(retrieved).toBeDefined();
     expect(retrieved?.coin).toBe('BTC');
@@ -121,6 +134,27 @@ describe('Unit Tests: SQLite Persistence & Recovery', () => {
 
   it('records partial fills and actual fee transactions', () => {
     const now = new Date().toISOString();
+    orderRepo.create({
+      id: 'ord-1',
+      trade_id: 'trade-uuid-1',
+      exchange: 'binance',
+      client_order_id: 'arb_bi_test_1',
+      exchange_order_id: null,
+      symbol: 'BTCUSDT',
+      side: 'SELL',
+      order_type: 'MARKET',
+      requested_quantity: '0.015',
+      executed_quantity: '0',
+      average_price: '0',
+      status: 'PENDING',
+      is_reduce_only: 0,
+      is_recovery: 0,
+      purpose: 'ENTRY',
+      error_message: null,
+      created_at: now,
+      updated_at: now,
+    });
+
     fillRepo.create({
       id: 'fill-1',
       order_id: 'arb_bi_test_1',
@@ -176,53 +210,14 @@ describe('Unit Tests: SQLite Persistence & Recovery', () => {
   });
 
   it('restores active trades correctly across restarts', () => {
-    const active = tradeRepo.getActiveTrades();
-    expect(active.length).toBe(0);
-
-    const now = new Date().toISOString();
-    fundingRepo.upsert({
-      id: 'fe-eth-restart',
-      coin: 'ETH',
-      binance_funding_rate: '0.0003',
-      bybit_funding_rate: '0.0001',
-      funding_rate_diff: '0.0002',
-      binance_funding_time: now,
-      bybit_funding_time: now,
-      target_funding_time: now,
-      is_aligned: 1,
-      status: 'TRADED',
-      created_at: now,
-    });
-
-    tradeRepo.create({
-      id: 'trade-active-1',
-      coin: 'ETH',
-      binance_symbol: 'ETHUSDT',
-      bybit_symbol: 'ETHUSDT',
-      funding_event_id: 'fe-eth-restart',
-      state: 'BOTH_LEGS_HEDGED',
-      direction: 'LONG_BINANCE_SHORT_BYBIT',
-      target_notional_usd: '500',
-      binance_entry_qty: '0.15',
-      bybit_entry_qty: '0.15',
-      binance_exit_qty: '0',
-      bybit_exit_qty: '0',
-      expected_funding_edge_pct: '0.04',
-      expected_net_profit_usd: '1.20',
-      realized_pnl_usd: '0',
-      total_fees_usd: '0',
-      total_funding_usd: '0',
-      net_pnl_usd: '0',
-      is_simulated: 1,
-      error_message: null,
-      created_at: now,
-      updated_at: now,
-      completed_at: null,
-    });
-
-    const activeTradesAfterRestart = tradeRepo.getActiveTrades();
+    const tradeRepo2 = new TradeRepository(db);
+    const activeTradesAfterRestart = tradeRepo2.getActiveTrades();
     expect(activeTradesAfterRestart.length).toBe(1);
-    expect(activeTradesAfterRestart[0]!.id).toBe('trade-active-1');
+    expect(activeTradesAfterRestart[0]!.id).toBe('trade-uuid-1');
     expect(activeTradesAfterRestart[0]!.state).toBe('BOTH_LEGS_HEDGED');
+
+    tradeRepo2.update({ id: 'trade-uuid-1', state: 'COMPLETED' });
+    const remaining = tradeRepo2.getActiveTrades();
+    expect(remaining.length).toBe(0);
   });
 });

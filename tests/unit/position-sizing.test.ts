@@ -61,11 +61,10 @@ describe('Unit Tests: Position Sizing and Risk Limits', () => {
       dummyBinanceInst,
       dummyBybitInst,
       5,
-      '0.5'
+      '15.0' // 15% max mismatch for coarse step size
     );
     expect(res.binanceQuantity.toString()).toBe('0.01');
     expect(res.bybitQuantity.toString()).toBe('0.009'); // Rounded down to step 0.001
-    // Mismatch is calculated and checked
     expect(res.notionalMismatchPct.lessThanOrEqualTo('10')).toBe(true);
   });
 

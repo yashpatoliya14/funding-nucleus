@@ -20,6 +20,7 @@ interface CliArgs {
   coin?: string;
   tradeId?: string;
   configPath?: string;
+  dbPath?: string;
 }
 
 function parseArgs(args: string[]): CliArgs {
@@ -42,6 +43,8 @@ function parseArgs(args: string[]): CliArgs {
       result.tradeId = args[++i];
     } else if (arg === '--config' && args[i + 1]) {
       result.configPath = args[++i];
+    } else if (arg === '--db' && args[i + 1]) {
+      result.dbPath = args[++i];
     }
   }
 
@@ -57,7 +60,7 @@ export function displayLastTrades(cliArgs: CliArgs) {
     process.exit(1);
   }
 
-  const rawDbPath = config.appConfig.persistence.path;
+  const rawDbPath = cliArgs.dbPath || config.appConfig.persistence.path;
   const resolvedDbPath = path.resolve(process.cwd(), rawDbPath);
 
   // Requirement: If configured database is missing, show configured path and error.

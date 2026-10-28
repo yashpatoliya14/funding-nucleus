@@ -137,13 +137,16 @@ export class ExecutionEngine {
 
       const recon = await this.reconciliation.reconcilePositions(tradeId, bSymbol, bySymbol);
 
-      // Check for one-leg failure or mismatch
-      if (!recon.bothLegsFilled || recon.oneLegFailed) {
+      // Check for one-leg failure or mismatch exceeding tolerance
+      const maxMismatch = toDecimal(this.config.execution.maximum_notional_mismatch_pct);
+      if (!recon.bothLegsFilled || recon.oneLegFailed || recon.residualMismatchPct.greaterThan(maxMismatch)) {
         currentState = this.stateMachine.transition(
           tradeId,
           currentState,
           'RECOVERY_REQUIRED',
-          'One leg failed or partial fill detected'
+          !recon.bothLegsFilled || recon.oneLegFailed
+            ? 'One leg failed or partial fill detected'
+            : `Residual mismatch ${recon.residualMismatchPct.toFixed(2)}% exceeds tolerance`
         );
 
         const recov = await this.hedgeRecovery.recover(

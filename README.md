@@ -186,6 +186,114 @@ The bot includes standalone operational commands:
 | `npm run validate-credentials` | [validate-credentials.ts](file:///c:/Users/yashp/Desktop/funding/scripts/validate-credentials.ts) | Tests exchange API keys, checks permissions, available margin, and commission rates. |
 | `npm run reconcile-positions` | [reconcile-positions.ts](file:///c:/Users/yashp/Desktop/funding/scripts/reconcile-positions.ts) | Audits open exchange positions against SQLite database records. |
 | `npm run emergency-flatten` | [emergency-flatten.ts](file:///c:/Users/yashp/Desktop/funding/scripts/emergency-flatten.ts) | Engages kill switch and immediately market-closes all positions across Binance and Bybit. |
+| `npm run trades:last` | [last-trades.ts](file:///c:/Users/yashp/Desktop/funding/src/scripts/last-trades.ts) | Displays the most recent 10 trades with directions, notionals, fees, slippage, and net P&L. |
+| `npm run trade:details` | [last-trades.ts](file:///c:/Users/yashp/Desktop/funding/src/scripts/last-trades.ts) | Performs full audit inspection of a single trade (state transitions, orders, fills, snapshots). |
+| `npm run telegram:test` | [test-telegram.ts](file:///c:/Users/yashp/Desktop/funding/scripts/test-telegram.ts) | Tests Telegram connectivity and sends a test message to your configured chat. |
+
+---
+
+## 6. Comprehensive Automated Testing
+
+The testing suite uses **Vitest** with completely isolated in-memory or temporary SQLite databases. Automated tests **never submit live exchange orders** and **never modify or touch the production database**.
+
+```bash
+# Static type checking
+npm run typecheck
+
+# Run complete automated test suite (72+ tests)
+npm test
+
+# Run tests with V8 code coverage report
+npm run test:coverage
+
+# Run integration tests (Telegram dispatcher & Last Trades CLI)
+npm run test:integration
+
+# Run execution safety & failure scenario tests (Scenarios 1-12)
+npm run test:safety
+```
+
+### Test Coverage Highlights
+- **Symbol Matching (10 tests)**: BTCUSDT/ETHUSDT matching, rejecting spot and delivery contracts, settlement currency compatibility, suspended instrument rejection, 24-hour cache hits, cache invalidation, and malformed metadata handling.
+- **Funding Calculation**: Both positive/negative funding, opposing signs, zero rate differentials, misaligned timestamps, and predicted rate shifts.
+- **Fees & Profitability (10 tests)**: Entry/exit taker fees, dynamic order book VWAP slippage, depth exhaustion, risk buffer margin, and decimal precision.
+- **Position Sizing & Risk**: Equal USD notional sizing, step size rounding, min lot enforcement, multiplier adjustments, leverage ceilings, daily loss limits.
+- **SQLite Persistence**: Parent-child foreign key integrity, transactions, rollbacks, and recovery after abrupt restarts.
+- **Execution Failures (Scenarios 1–12)**: Concurrent entries, Binance fills/Bybit rejects, Binance timeout with status recovery (no blind resubmissions), partial fills with hedge recovery, notional mismatch flattening, unconfirmed funding settlement, failed close orders, process locks, emergency kill switches, and rate limit backoff.
+
+---
+
+## 7. Telegram-Only Monitoring
+
+The Telegram monitoring interface provides real-time notifications and daily performance summaries without requiring an external dashboard or web server.
+
+### Environment Configuration
+Configure the following in `.env`:
+```bash
+TELEGRAM_BOT_TOKEN="123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ"
+TELEGRAM_CHAT_ID="987654321"
+TELEGRAM_MONITORING_ENABLED=true
+TELEGRAM_MONITORING_DURATION_DAYS=3
+```
+
+### Monitored Event Types (19 Total)
+1. Bot startup / restart
+2. Operating mode (Paper / Live)
+3. Exchange connectivity
+4. Symbol cache refresh
+5. New eligible opportunity
+6. Opportunity rejected & reason
+7. Trade execution started
+8. Both legs hedged
+9. Partial fill / one-leg failure
+10. Hedge recovery initiated
+11. Emergency flatten triggered
+12. Funding settlement verified
+13. Trade closed and reconciled
+14. Actual net P&L recorded
+15. Unexpected open position
+16. Daily loss limit reached
+17. Kill switch engaged
+18. Authentication failure
+19. Monitoring window ended
+
+### Daily Telegram Summary
+Dispatched daily at **9:00 PM IST (15:30 UTC)** with breakdown of:
+- Scanned pairs, eligible opportunities, attempted/completed/failed trades
+- Confirmed funding received, funding paid, taker fees, slippage, realized trading P&L, net P&L
+- Reconciled open exchange positions and risk status
+
+### Expiration & Safety Guarantee
+- When the configured monitoring window (1–7 days) expires, routine monitoring messages cease automatically and an expiration notification is sent.
+- **Critical risk alerts** (kill switch engagement, unexpected open positions, unhedged recovery failures) **never expire** and continue firing as long as the bot runs.
+- Expiration **does not close open trades or change the trading mode**.
+
+---
+
+## 8. Viewing Historical Trades CLI
+
+Inspect the last N trades directly from local SQLite without querying the exchanges or modifying production data.
+
+```bash
+# View last 10 trades (default table format)
+npm run trades:last
+
+# View last 20 trades
+npm run trades:last -- --limit 20
+
+# Filter by trade status
+npm run trades:last -- --status completed
+npm run trades:last -- --status failed
+
+# Filter by coin
+npm run trades:last -- --coin BTCUSDT
+
+# Output raw JSON array (for piping to jq or scripts)
+npm run trades:last -- --format json
+
+# Inspect complete audit lifecycle for a single trade
+npm run trade:details -- --id <trade-uuid>
+```
 
 ---
 

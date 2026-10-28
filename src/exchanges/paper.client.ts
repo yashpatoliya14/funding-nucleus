@@ -221,7 +221,8 @@ export class PaperClient implements IExchangeClient {
     const book = await this.getOrderBook(order.symbol);
     const levels = order.side === 'BUY' ? book.asks : book.bids;
 
-    let remainingQty = this.failureMode === 'PARTIAL' ? order.quantity.times('0.5') : order.quantity;
+    let remainingQty =
+      this.failureMode === 'PARTIAL' && !order.reduceOnly ? order.quantity.times('0.5') : order.quantity;
     let totalCost = toDecimal('0');
     let filledQty = toDecimal('0');
 
