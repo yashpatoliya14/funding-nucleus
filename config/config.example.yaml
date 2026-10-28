@@ -1,0 +1,38 @@
+app:
+  mode: paper
+  log_level: INFO
+
+persistence:
+  driver: sqlite
+  path: ./data/funding-bot.sqlite
+
+symbols:
+  cache_ttl_hours: 24
+  refresh_trading_status_seconds: 30
+
+strategy:
+  entry_lead_minutes: 10
+  target_exit_delay_seconds: 60
+  minimum_net_profit_usd: 0.50
+  minimum_funding_edge_pct: 0.05
+  risk_buffer_usd: 0.10
+  require_aligned_funding_events: true
+
+execution:
+  order_type: MARKET
+  parallel_entry: true
+  maximum_unhedged_seconds: 10
+  maximum_recovery_seconds: 15
+  maximum_slippage_bps: 10
+  maximum_notional_mismatch_pct: 0.5
+  reduce_only_exits: true
+
+risk:
+  default_leverage_cap: 5
+  maximum_notional_per_leg_usd: 100
+  maximum_concurrent_trades: 1
+  maximum_daily_loss_usd: 5
+  maximum_aggregate_notional_usd: 200
+
+monitoring:
+  telegram_enabled: false

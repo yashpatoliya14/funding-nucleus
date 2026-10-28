@@ -1,0 +1,56 @@
+{
+  "name": "funding-arbitrage-bot",
+  "version": "1.0.0",
+  "description": "Production-oriented Binance-Bybit Funding Arbitrage Bot with SQLite persistence and market-order-only execution",
+  "type": "module",
+  "main": "dist/main.js",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/main.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:integration": "vitest run tests/integration",
+    "test:safety": "vitest run tests/safety tests/execution",
+    "db:migrate": "tsx src/persistence/migrations.ts",
+    "status": "tsx scripts/status.ts",
+    "validate-credentials": "tsx scripts/validate-credentials.ts",
+    "reconcile-positions": "tsx scripts/reconcile-positions.ts",
+    "emergency-flatten": "tsx scripts/emergency-flatten.ts",
+    "trades:last": "tsx src/scripts/last-trades.ts",
+    "trade:details": "tsx src/scripts/last-trades.ts",
+    "telegram:test": "tsx scripts/test-telegram.ts"
+  },
+  "keywords": [
+    "crypto",
+    "arbitrage",
+    "funding-rate",
+    "binance",
+    "bybit",
+    "quantitative-trading"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "better-sqlite3": "^13.0.3",
+    "decimal.js": "^10.6.0",
+    "dotenv": "^18.0.9",
+    "pino": "^10.4.0",
+    "pino-pretty": "^13.2.0",
+    "undici": "^8.12.3",
+    "ws": "^8.22.0",
+    "yaml": "^2.9.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^26.6.5",
+    "@types/ws": "^8.18.2",
+    "@vitest/coverage-v8": "^3.2.4",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  }
+}

@@ -1,0 +1,301 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { FullConfig } from './config/env.js';
+import { AppDatabase } from './persistence/database.js';
+import { runMigrations } from './persistence/migrations.js';
+import {
+  DailySummaryRepository,
+  FillRepository,
+  FundingEventRepository,
+  FundingTransactionRepository,
+  OrderRepository,
+  PositionSnapshotRepository,
+  RiskEventRepository,
+  StateTransitionRepository,
+  SymbolRepository,
+  TradeRepository,
+} from './persistence/repositories.js';
+import { IExchangeClient } from './exchanges/exchange.interface.js';
+import { BinanceClient } from './exchanges/binance.client.js';
+import { BybitClient } from './exchanges/bybit.client.js';
+import { PaperClient } from './exchanges/paper.client.js';
+import { SymbolMatcher } from './market-data/symbol-matcher.js';
+import { SymbolCache } from './market-data/symbol-cache.js';
+import { FundingScanner } from './market-data/funding-scanner.js';
+import { MarketHealth } from './market-data/market-health.js';
+import { OpportunityFilter } from './strategy/opportunity-filter.js';
+import { CircuitBreaker } from './risk/circuit-breaker.js';
+import { KillSwitch } from './risk/kill-switch.js';
+import { RiskManager } from './risk/risk-manager.js';
+import { OrderManager } from './execution/order-manager.js';
+import { ExecutionReconciliation } from './execution/reconciliation.js';
+import { HedgeRecovery } from './execution/hedge-recovery.js';
+import { TradeStateMachine } from './execution/state-machine.js';
+import { ExecutionEngine } from './execution/execution-engine.js';
+import { FundingScheduler } from './scheduler/funding-scheduler.js';
+import { TelegramNotifier } from './notifications/telegram.js';
+import { SystemHealth } from './monitoring/health.js';
+import { MetricsCollector } from './monitoring/metrics.js';
+import { logger } from './utils/logger.js';
+import { sleep } from './utils/time.js';
+
+export class FundingArbitrageApp {
+  private db: AppDatabase;
+  private binanceClient: IExchangeClient;
+  private bybitClient: IExchangeClient;
+  private symbolCache: SymbolCache;
+  private scanner: FundingScanner;
+  private marketHealth: MarketHealth;
+  private opportunityFilter: OpportunityFilter;
+  private riskManager: RiskManager;
+  private circuitBreaker: CircuitBreaker;
+  private killSwitch: KillSwitch;
+  private executionEngine: ExecutionEngine;
+  private telegram: TelegramNotifier;
+  private health: SystemHealth;
+  private metrics: MetricsCollector;
+  private tradeRepo: TradeRepository;
+  private lockFilePath: string;
+  private isRunning: boolean = false;
+
+  constructor(private config: FullConfig) {
+    const dataDir = path.dirname(path.resolve(process.cwd(), config.appConfig.persistence.path));
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+    this.lockFilePath = path.join(dataDir, 'funding-bot.lock');
+
+    // 1. Initialize SQLite database & migrations
+    this.db = new AppDatabase(config.appConfig.persistence.path);
+    const sqliteDb = this.db.connect();
+    runMigrations(sqliteDb);
+
+    // 2. Repositories
+    const symbolRepo = new SymbolRepository(sqliteDb);
+    this.tradeRepo = new TradeRepository(sqliteDb);
+    const orderRepo = new OrderRepository(sqliteDb);
+    const fillRepo = new FillRepository(sqliteDb);
+    const fundingEventRepo = new FundingEventRepository(sqliteDb);
+    const fundingTxRepo = new FundingTransactionRepository(sqliteDb);
+    const snapshotRepo = new PositionSnapshotRepository(sqliteDb);
+    const transitionRepo = new StateTransitionRepository(sqliteDb);
+    const riskRepo = new RiskEventRepository(sqliteDb);
+    const dailyRepo = new DailySummaryRepository(sqliteDb);
+
+    // 3. Exchange Adapters (Paper or Live)
+    const isLive = config.appConfig.app.mode === 'live';
+    if (isLive) {
+      logger.info('Initializing LIVE exchange clients');
+      this.binanceClient = new BinanceClient({
+        apiKey: config.env.BINANCE_API_KEY,
+        apiSecret: config.env.BINANCE_API_SECRET,
+        testnet: config.env.BINANCE_TESTNET,
+      });
+      this.bybitClient = new BybitClient({
+        apiKey: config.env.BYBIT_API_KEY,
+        apiSecret: config.env.BYBIT_API_SECRET,
+        testnet: config.env.BYBIT_TESTNET,
+      });
+    } else {
+      logger.info('Initializing PAPER simulated exchange clients');
+      this.binanceClient = new PaperClient({ exchangeName: 'binance' });
+      this.bybitClient = new PaperClient({ exchangeName: 'bybit' });
+    }
+
+    // 4. Market Data & Strategy
+    const matcher = new SymbolMatcher(this.binanceClient, this.bybitClient);
+    this.symbolCache = new SymbolCache(symbolRepo, matcher, config.appConfig.symbols.cache_ttl_hours);
+    this.scanner = new FundingScanner(
+      this.binanceClient,
+      this.bybitClient,
+      config.appConfig.strategy.require_aligned_funding_events
+    );
+    this.marketHealth = new MarketHealth(this.binanceClient, this.bybitClient);
+    this.opportunityFilter = new OpportunityFilter(this.binanceClient, this.bybitClient, config.appConfig);
+
+    // 5. Risk Controls
+    this.circuitBreaker = new CircuitBreaker(riskRepo);
+    this.killSwitch = new KillSwitch(this.binanceClient, this.bybitClient, riskRepo);
+    this.riskManager = new RiskManager(
+      this.binanceClient,
+      this.bybitClient,
+      this.tradeRepo,
+      dailyRepo,
+      riskRepo,
+      this.circuitBreaker,
+      this.killSwitch,
+      config.appConfig
+    );
+
+    // 6. Execution & Recovery
+    const orderManager = new OrderManager(orderRepo);
+    const reconciliation = new ExecutionReconciliation(this.binanceClient, this.bybitClient, fillRepo, snapshotRepo);
+    const hedgeRecovery = new HedgeRecovery(
+      this.binanceClient,
+      this.bybitClient,
+      orderManager,
+      reconciliation,
+      riskRepo,
+      config.appConfig
+    );
+    const stateMachine = new TradeStateMachine(this.tradeRepo, transitionRepo);
+    this.executionEngine = new ExecutionEngine(
+      this.binanceClient,
+      this.bybitClient,
+      orderManager,
+      reconciliation,
+      hedgeRecovery,
+      stateMachine,
+      this.tradeRepo,
+      fundingEventRepo,
+      fundingTxRepo,
+      dailyRepo,
+      config.appConfig
+    );
+
+    // 7. Notifications & Monitoring
+    this.telegram = new TelegramNotifier({
+      enabled: config.appConfig.monitoring.telegram_enabled,
+      botToken: config.env.TELEGRAM_BOT_TOKEN,
+      chatId: config.env.TELEGRAM_CHAT_ID,
+    });
+    this.health = new SystemHealth(sqliteDb, this.binanceClient, this.bybitClient, this.circuitBreaker, this.marketHealth);
+    this.metrics = new MetricsCollector(sqliteDb, dailyRepo);
+  }
+
+  private acquireLock(): void {
+    if (fs.existsSync(this.lockFilePath)) {
+      const pid = fs.readFileSync(this.lockFilePath, 'utf8').trim();
+      throw new Error(`Instance lockfile exists (${this.lockFilePath}) held by PID ${pid}. Another bot instance may be running!`);
+    }
+    fs.writeFileSync(this.lockFilePath, process.pid.toString(), 'utf8');
+  }
+
+  private releaseLock(): void {
+    try {
+      if (fs.existsSync(this.lockFilePath)) {
+        fs.unlinkSync(this.lockFilePath);
+      }
+    } catch (err) {
+      logger.warn({ err }, 'Could not remove process lock file');
+    }
+  }
+
+  async startupReconciliation(): Promise<void> {
+    logger.info('Performing startup reconciliation against SQLite records and live exchange positions');
+    const activeTrades = this.tradeRepo.getActiveTrades();
+
+    if (activeTrades.length > 0) {
+      logger.warn({ count: activeTrades.length }, 'Found active/unresolved trades in SQLite on startup');
+      for (const t of activeTrades) {
+        logger.warn({ tradeId: t.id, coin: t.coin, state: t.state }, 'Reconciling unresolved trade on startup');
+        await this.telegram.sendAlert(
+          'Restart Recovery Alert',
+          `Bot restarted with unresolved trade ${t.id} (${t.coin}) in state ${t.state}`,
+          'WARN'
+        );
+      }
+    } else {
+      logger.info('Startup reconciliation clean: No unresolved open trades');
+    }
+  }
+
+  async start(): Promise<void> {
+    this.acquireLock();
+    this.isRunning = true;
+    logger.info({ mode: this.config.appConfig.app.mode }, 'Funding Arbitrage Bot started successfully');
+
+    await this.startupReconciliation();
+
+    // Initial symbol cache refresh
+    await this.symbolCache.refreshIfExpired();
+
+    // Main Scanning & Trading Loop
+    while (this.isRunning) {
+      try {
+        if (this.killSwitch.isEngaged() || this.circuitBreaker.isTripped()) {
+          logger.warn('Trading halted by KillSwitch or CircuitBreaker. Standing by...');
+          await sleep(10000);
+          continue;
+        }
+
+        // 1. Refresh symbol cache if expired
+        const activeSymbols = await this.symbolCache.refreshIfExpired();
+
+        // 2. Scan funding rates
+        const opportunities = await this.scanner.scanOpportunities(activeSymbols);
+
+        if (opportunities.length > 0) {
+          const topOpp = opportunities[0]!;
+          logger.info(
+            {
+              coin: topOpp.mapping.normalized_symbol,
+              edge: `${topOpp.fundingDiffPct.toFixed(4)}%`,
+              bRate: topOpp.binanceRate.toString(),
+              byRate: topOpp.bybitRate.toString(),
+            },
+            'Top funding opportunity detected'
+          );
+
+          // 3. Check if within entry window
+          const inWindow = FundingScheduler.isWithinEntryWindow(
+            topOpp.targetFundingTimeMs,
+            this.config.appConfig.strategy.entry_lead_minutes
+          );
+
+          if (inWindow) {
+            logger.info({ coin: topOpp.mapping.normalized_symbol }, 'Opportunity is within entry window! Evaluating candidate...');
+            const evaluated = await this.opportunityFilter.evaluateOpportunity(topOpp);
+
+            if (evaluated.isApproved) {
+              // Pre-trade risk check
+              await this.riskManager.validatePreTrade(evaluated);
+
+              await this.telegram.sendAlert(
+                'Opportunity Approved',
+                `Entering ${evaluated.opportunity.mapping.normalized_symbol} (${evaluated.profitability.direction})\nExpected Net Profit: $${evaluated.profitability.expectedNetProfitUsd.toFixed(2)}`
+              );
+
+              // Execute trade lifecycle
+              const isSimulated = this.config.appConfig.app.mode === 'paper';
+              await this.executionEngine.executeTrade(evaluated, isSimulated);
+            } else {
+              logger.debug({ reason: evaluated.rejectionReason }, 'Opportunity did not meet filter criteria');
+            }
+          } else {
+            const msRemaining = FundingScheduler.msUntilEntryWindow(
+              topOpp.targetFundingTimeMs,
+              this.config.appConfig.strategy.entry_lead_minutes
+            );
+            logger.debug({ minutesRemaining: (msRemaining / 60000).toFixed(1) }, 'Opportunity waiting for entry window');
+          }
+        }
+
+        // Sleep between scan cycles (e.g. 15s)
+        await sleep(15000);
+      } catch (err: any) {
+        logger.error({ err: err?.message }, 'Error in main loop cycle');
+        await sleep(5000);
+      }
+    }
+  }
+
+  stop(): void {
+    logger.info('Stopping Funding Arbitrage Bot...');
+    this.isRunning = false;
+    this.releaseLock();
+    this.db.close();
+  }
+
+  getHealthMonitor(): SystemHealth {
+    return this.health;
+  }
+
+  getMetricsCollector(): MetricsCollector {
+    return this.metrics;
+  }
+
+  getKillSwitch(): KillSwitch {
+    return this.killSwitch;
+  }
+}
