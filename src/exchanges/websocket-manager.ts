@@ -1,6 +1,7 @@
 import WebSocket from 'ws';
 import { logger } from '../utils/logger.js';
 import { sleep } from '../utils/time.js';
+import { customDnsLookup } from '../utils/dns-resolver.js';
 
 export interface WebSocketOptions {
   url: string;
@@ -22,7 +23,7 @@ export class ResilientWebSocket {
   public connect(): void {
     this.isClosedIntentionally = false;
     try {
-      this.ws = new WebSocket(this.options.url);
+      this.ws = new WebSocket(this.options.url, { lookup: customDnsLookup });
 
       this.ws.on('open', () => {
         logger.info({ url: this.options.url }, 'WebSocket connected');

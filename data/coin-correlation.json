@@ -1,0 +1,473 @@
+{
+  "timestamp": "2026-10-29T13:45:12.351Z",
+  "benchmark": "BTCUSDT",
+  "days": 7,
+  "interval": "1h",
+  "coinsVsBenchmark": [
+    {
+      "symbol": "SOXSUSDT",
+      "correlation": -0.5100946548183555,
+      "classification": "MODERATE INVERSE",
+      "fundingRate8h": "0.0000%",
+      "quoteVolumeM": "514.2M"
+    },
+    {
+      "symbol": "CLUSDT",
+      "correlation": -0.23969446022796248,
+      "classification": "WEAK INVERSE",
+      "fundingRate8h": "-0.0016%",
+      "quoteVolumeM": "1401.5M"
+    },
+    {
+      "symbol": "BZUSDT",
+      "correlation": -0.22182372781776555,
+      "classification": "WEAK INVERSE",
+      "fundingRate8h": "-0.0045%",
+      "quoteVolumeM": "847.4M"
+    },
+    {
+      "symbol": "JCTUSDT",
+      "correlation": -0.09148886921913774,
+      "classification": "WEAK INVERSE",
+      "fundingRate8h": "+0.0050%",
+      "quoteVolumeM": "155.3M"
+    },
+    {
+      "symbol": "QUSDT",
+      "correlation": -0.05638116873804709,
+      "classification": "WEAK INVERSE",
+      "fundingRate8h": "+0.0050%",
+      "quoteVolumeM": "362.2M"
+    },
+    {
+      "symbol": "EVAAUSDT",
+      "correlation": 0.047881886074691286,
+      "classification": "UNCORRELATED",
+      "fundingRate8h": "+0.0193%",
+      "quoteVolumeM": "397.6M"
+    },
+    {
+      "symbol": "APRUSDT",
+      "correlation": 0.06492151083428646,
+      "classification": "UNCORRELATED",
+      "fundingRate8h": "+0.0269%",
+      "quoteVolumeM": "150.9M"
+    },
+    {
+      "symbol": "IDOLUSDT",
+      "correlation": 0.11656904353222448,
+      "classification": "UNCORRELATED",
+      "fundingRate8h": "+0.0144%",
+      "quoteVolumeM": "295.6M"
+    },
+    {
+      "symbol": "MSFTUSDT",
+      "correlation": 0.1192183716464275,
+      "classification": "UNCORRELATED",
+      "fundingRate8h": "0.0000%",
+      "quoteVolumeM": "202.1M"
+    },
+    {
+      "symbol": "TSLAUSDT",
+      "correlation": 0.1534665743901102,
+      "classification": "UNCORRELATED",
+      "fundingRate8h": "0.0000%",
+      "quoteVolumeM": "150.5M"
+    },
+    {
+      "symbol": "INITUSDT",
+      "correlation": 0.20338778715997127,
+      "classification": "UNCORRELATED",
+      "fundingRate8h": "-0.0346%",
+      "quoteVolumeM": "207.0M"
+    },
+    {
+      "symbol": "GOOGLUSDT",
+      "correlation": 0.2466289859863725,
+      "classification": "UNCORRELATED",
+      "fundingRate8h": "+0.0639%",
+      "quoteVolumeM": "1161.5M"
+    },
+    {
+      "symbol": "LITEUSDT",
+      "correlation": 0.2731747482488793,
+      "classification": "UNCORRELATED",
+      "fundingRate8h": "0.0000%",
+      "quoteVolumeM": "254.4M"
+    },
+    {
+      "symbol": "NVDAUSDT",
+      "correlation": 0.35732643952955306,
+      "classification": "MODERATE POSITIVE",
+      "fundingRate8h": "0.0000%",
+      "quoteVolumeM": "264.1M"
+    },
+    {
+      "symbol": "XAUUSDT",
+      "correlation": 0.35865472608299737,
+      "classification": "MODERATE POSITIVE",
+      "fundingRate8h": "+0.0044%",
+      "quoteVolumeM": "2520.7M"
+    },
+    {
+      "symbol": "XAGUSDT",
+      "correlation": 0.3943778709544396,
+      "classification": "MODERATE POSITIVE",
+      "fundingRate8h": "+0.0092%",
+      "quoteVolumeM": "1397.6M"
+    },
+    {
+      "symbol": "SPCXUSDT",
+      "correlation": 0.4119982901575458,
+      "classification": "MODERATE POSITIVE",
+      "fundingRate8h": "+0.0361%",
+      "quoteVolumeM": "654.0M"
+    },
+    {
+      "symbol": "SKHYUSDT",
+      "correlation": 0.41489723875099044,
+      "classification": "MODERATE POSITIVE",
+      "fundingRate8h": "0.0000%",
+      "quoteVolumeM": "1086.2M"
+    },
+    {
+      "symbol": "MRVLUSDT",
+      "correlation": 0.4155353332176488,
+      "classification": "MODERATE POSITIVE",
+      "fundingRate8h": "+0.0118%",
+      "quoteVolumeM": "223.5M"
+    },
+    {
+      "symbol": "HYPEUSDT",
+      "correlation": 0.4795752840906173,
+      "classification": "MODERATE POSITIVE",
+      "fundingRate8h": "+0.0050%",
+      "quoteVolumeM": "1313.4M"
+    },
+    {
+      "symbol": "NBISUSDT",
+      "correlation": 0.49531489224069924,
+      "classification": "MODERATE POSITIVE",
+      "fundingRate8h": "+0.0129%",
+      "quoteVolumeM": "147.8M"
+    },
+    {
+      "symbol": "SKHYNIXUSDT",
+      "correlation": 0.4969011138288245,
+      "classification": "MODERATE POSITIVE",
+      "fundingRate8h": "0.0000%",
+      "quoteVolumeM": "2475.4M"
+    },
+    {
+      "symbol": "SNXXUSDT",
+      "correlation": 0.5024503325172616,
+      "classification": "MODERATE POSITIVE",
+      "fundingRate8h": "0.0000%",
+      "quoteVolumeM": "484.5M"
+    },
+    {
+      "symbol": "SNDKUSDT",
+      "correlation": 0.5050447436010257,
+      "classification": "MODERATE POSITIVE",
+      "fundingRate8h": "+0.0007%",
+      "quoteVolumeM": "2234.4M"
+    },
+    {
+      "symbol": "1000PEPEUSDT",
+      "correlation": 0.5051950309774649,
+      "classification": "MODERATE POSITIVE",
+      "fundingRate8h": "+0.0100%",
+      "quoteVolumeM": "711.7M"
+    },
+    {
+      "symbol": "SOXLUSDT",
+      "correlation": 0.5221918492367393,
+      "classification": "MODERATE POSITIVE",
+      "fundingRate8h": "0.0000%",
+      "quoteVolumeM": "3971.0M"
+    },
+    {
+      "symbol": "MUUUSDT",
+      "correlation": 0.5223096485905646,
+      "classification": "MODERATE POSITIVE",
+      "fundingRate8h": "0.0000%",
+      "quoteVolumeM": "244.1M"
+    },
+    {
+      "symbol": "MUUSDT",
+      "correlation": 0.5233723190309162,
+      "classification": "MODERATE POSITIVE",
+      "fundingRate8h": "0.0000%",
+      "quoteVolumeM": "743.2M"
+    },
+    {
+      "symbol": "INTCUSDT",
+      "correlation": 0.5234582494035515,
+      "classification": "MODERATE POSITIVE",
+      "fundingRate8h": "+0.0048%",
+      "quoteVolumeM": "206.7M"
+    },
+    {
+      "symbol": "EWYUSDT",
+      "correlation": 0.5546182479371904,
+      "classification": "MODERATE POSITIVE",
+      "fundingRate8h": "0.0000%",
+      "quoteVolumeM": "196.0M"
+    },
+    {
+      "symbol": "QQQUSDT",
+      "correlation": 0.5614996740113047,
+      "classification": "MODERATE POSITIVE",
+      "fundingRate8h": "0.0000%",
+      "quoteVolumeM": "217.5M"
+    },
+    {
+      "symbol": "SAMSUNGUSDT",
+      "correlation": 0.5622154660390398,
+      "classification": "MODERATE POSITIVE",
+      "fundingRate8h": "0.0000%",
+      "quoteVolumeM": "367.5M"
+    },
+    {
+      "symbol": "KORUUSDT",
+      "correlation": 0.5679758841554522,
+      "classification": "MODERATE POSITIVE",
+      "fundingRate8h": "0.0000%",
+      "quoteVolumeM": "1701.1M"
+    },
+    {
+      "symbol": "DRAMUSDT",
+      "correlation": 0.5877682991739793,
+      "classification": "MODERATE POSITIVE",
+      "fundingRate8h": "+0.0129%",
+      "quoteVolumeM": "237.4M"
+    },
+    {
+      "symbol": "WLDUSDT",
+      "correlation": 0.6127021023589807,
+      "classification": "MODERATE POSITIVE",
+      "fundingRate8h": "+0.0050%",
+      "quoteVolumeM": "246.7M"
+    },
+    {
+      "symbol": "ENAUSDT",
+      "correlation": 0.704791035741611,
+      "classification": "STRONG POSITIVE",
+      "fundingRate8h": "+0.0050%",
+      "quoteVolumeM": "340.7M"
+    },
+    {
+      "symbol": "NEARUSDT",
+      "correlation": 0.7243437585254617,
+      "classification": "STRONG POSITIVE",
+      "fundingRate8h": "+0.0080%",
+      "quoteVolumeM": "625.2M"
+    },
+    {
+      "symbol": "PUMPUSDT",
+      "correlation": 0.7390774946587146,
+      "classification": "STRONG POSITIVE",
+      "fundingRate8h": "+0.0050%",
+      "quoteVolumeM": "175.9M"
+    },
+    {
+      "symbol": "CRCLUSDT",
+      "correlation": 0.7641417360615074,
+      "classification": "STRONG POSITIVE",
+      "fundingRate8h": "+0.0295%",
+      "quoteVolumeM": "215.3M"
+    },
+    {
+      "symbol": "UNIUSDT",
+      "correlation": 0.7712310753927077,
+      "classification": "STRONG POSITIVE",
+      "fundingRate8h": "+0.0100%",
+      "quoteVolumeM": "176.8M"
+    },
+    {
+      "symbol": "ZECUSDT",
+      "correlation": 0.7727805410283559,
+      "classification": "STRONG POSITIVE",
+      "fundingRate8h": "+0.0032%",
+      "quoteVolumeM": "1566.3M"
+    },
+    {
+      "symbol": "BNBUSDT",
+      "correlation": 0.7815247292476292,
+      "classification": "STRONG POSITIVE",
+      "fundingRate8h": "0.0000%",
+      "quoteVolumeM": "661.8M"
+    },
+    {
+      "symbol": "MSTRUSDT",
+      "correlation": 0.8376751719765961,
+      "classification": "STRONG POSITIVE",
+      "fundingRate8h": "+0.0300%",
+      "quoteVolumeM": "228.9M"
+    },
+    {
+      "symbol": "SUIUSDT",
+      "correlation": 0.8403654460157862,
+      "classification": "STRONG POSITIVE",
+      "fundingRate8h": "+0.0057%",
+      "quoteVolumeM": "241.4M"
+    },
+    {
+      "symbol": "XRPUSDT",
+      "correlation": 0.8467069675060607,
+      "classification": "STRONG POSITIVE",
+      "fundingRate8h": "+0.0100%",
+      "quoteVolumeM": "594.8M"
+    },
+    {
+      "symbol": "DOGEUSDT",
+      "correlation": 0.8622479592300628,
+      "classification": "STRONG POSITIVE",
+      "fundingRate8h": "+0.0100%",
+      "quoteVolumeM": "336.7M"
+    },
+    {
+      "symbol": "ADAUSDT",
+      "correlation": 0.8785020226579698,
+      "classification": "STRONG POSITIVE",
+      "fundingRate8h": "+0.0100%",
+      "quoteVolumeM": "198.3M"
+    },
+    {
+      "symbol": "SOLUSDT",
+      "correlation": 0.9054788111903472,
+      "classification": "STRONG POSITIVE",
+      "fundingRate8h": "+0.0100%",
+      "quoteVolumeM": "1545.4M"
+    },
+    {
+      "symbol": "ETHUSDT",
+      "correlation": 0.9341464763316281,
+      "classification": "STRONG POSITIVE",
+      "fundingRate8h": "+0.0091%",
+      "quoteVolumeM": "7962.9M"
+    }
+  ],
+  "topNegativePairs": [
+    {
+      "symbolA": "SOXLUSDT",
+      "symbolB": "SOXSUSDT",
+      "correlation": -0.9948264940388792,
+      "rateA_8h": "0.0000%",
+      "rateB_8h": "0.0000%",
+      "classification": "STRONG INVERSE"
+    },
+    {
+      "symbolA": "SOXSUSDT",
+      "symbolB": "INTCUSDT",
+      "correlation": -0.901582198735058,
+      "rateA_8h": "0.0000%",
+      "rateB_8h": "+0.0048%",
+      "classification": "STRONG INVERSE"
+    },
+    {
+      "symbolA": "SOXSUSDT",
+      "symbolB": "QQQUSDT",
+      "correlation": -0.858698418791537,
+      "rateA_8h": "0.0000%",
+      "rateB_8h": "0.0000%",
+      "classification": "STRONG INVERSE"
+    },
+    {
+      "symbolA": "SOXSUSDT",
+      "symbolB": "DRAMUSDT",
+      "correlation": -0.8282100741371694,
+      "rateA_8h": "0.0000%",
+      "rateB_8h": "+0.0129%",
+      "classification": "STRONG INVERSE"
+    },
+    {
+      "symbolA": "MUUSDT",
+      "symbolB": "SOXSUSDT",
+      "correlation": -0.8099017996535146,
+      "rateA_8h": "0.0000%",
+      "rateB_8h": "0.0000%",
+      "classification": "STRONG INVERSE"
+    },
+    {
+      "symbolA": "SOXSUSDT",
+      "symbolB": "MUUUSDT",
+      "correlation": -0.8026220546261524,
+      "rateA_8h": "0.0000%",
+      "rateB_8h": "0.0000%",
+      "classification": "STRONG INVERSE"
+    },
+    {
+      "symbolA": "SOXSUSDT",
+      "symbolB": "NBISUSDT",
+      "correlation": -0.7806338972919497,
+      "rateA_8h": "0.0000%",
+      "rateB_8h": "+0.0129%",
+      "classification": "STRONG INVERSE"
+    },
+    {
+      "symbolA": "SNDKUSDT",
+      "symbolB": "SOXSUSDT",
+      "correlation": -0.7770480903072483,
+      "rateA_8h": "+0.0007%",
+      "rateB_8h": "0.0000%",
+      "classification": "STRONG INVERSE"
+    },
+    {
+      "symbolA": "SNXXUSDT",
+      "symbolB": "SOXSUSDT",
+      "correlation": -0.7739441206679571,
+      "rateA_8h": "0.0000%",
+      "rateB_8h": "0.0000%",
+      "classification": "STRONG INVERSE"
+    },
+    {
+      "symbolA": "KORUUSDT",
+      "symbolB": "SOXSUSDT",
+      "correlation": -0.7522469735074985,
+      "rateA_8h": "0.0000%",
+      "rateB_8h": "0.0000%",
+      "classification": "STRONG INVERSE"
+    },
+    {
+      "symbolA": "SOXSUSDT",
+      "symbolB": "EWYUSDT",
+      "correlation": -0.743661501581242,
+      "rateA_8h": "0.0000%",
+      "rateB_8h": "0.0000%",
+      "classification": "STRONG INVERSE"
+    },
+    {
+      "symbolA": "SOXSUSDT",
+      "symbolB": "MRVLUSDT",
+      "correlation": -0.7434713377680807,
+      "rateA_8h": "0.0000%",
+      "rateB_8h": "+0.0118%",
+      "classification": "STRONG INVERSE"
+    },
+    {
+      "symbolA": "SAMSUNGUSDT",
+      "symbolB": "SOXSUSDT",
+      "correlation": -0.7250611046502504,
+      "rateA_8h": "0.0000%",
+      "rateB_8h": "0.0000%",
+      "classification": "STRONG INVERSE"
+    },
+    {
+      "symbolA": "SKHYUSDT",
+      "symbolB": "SOXSUSDT",
+      "correlation": -0.643955335749594,
+      "rateA_8h": "0.0000%",
+      "rateB_8h": "0.0000%",
+      "classification": "MODERATE INVERSE"
+    },
+    {
+      "symbolA": "SKHYNIXUSDT",
+      "symbolB": "SOXSUSDT",
+      "correlation": -0.6376720466104799,
+      "rateA_8h": "0.0000%",
+      "rateB_8h": "0.0000%",
+      "classification": "MODERATE INVERSE"
+    }
+  ]
+}

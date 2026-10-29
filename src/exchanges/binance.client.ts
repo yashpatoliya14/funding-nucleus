@@ -16,6 +16,7 @@ import { RateLimiter } from './rate-limiter.js';
 import { Decimal, toDecimal } from '../utils/decimal.js';
 import { ExchangeApiError, InsufficientMarginError } from '../utils/errors.js';
 import { logger } from '../utils/logger.js';
+import { initializeDns } from '../utils/dns-resolver.js';
 
 export interface BinanceClientOptions {
   apiKey: string;
@@ -31,6 +32,7 @@ export class BinanceClient implements IExchangeClient {
   private readonly rateLimiter: RateLimiter;
 
   constructor(options: BinanceClientOptions) {
+    initializeDns();
     this.apiKey = options.apiKey;
     this.apiSecret = options.apiSecret;
     this.baseUrl = options.testnet ? 'https://testnet.binancefuture.com' : 'https://fapi.binance.com';

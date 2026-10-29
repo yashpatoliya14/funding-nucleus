@@ -1,8 +1,10 @@
 import { loadConfig } from '../src/config/env.js';
 import { BinanceClient } from '../src/exchanges/binance.client.js';
 import { BybitClient } from '../src/exchanges/bybit.client.js';
+import { initializeDns } from '../src/utils/dns-resolver.js';
 
 async function validate() {
+  initializeDns();
   console.log('\n======================================================');
   console.log('       EXCHANGE CREDENTIALS VALIDATION TOOL           ');
   console.log('======================================================\n');
