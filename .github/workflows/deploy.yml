@@ -26,20 +26,29 @@ jobs:
           port: ${{ secrets.VM_PORT }}
           key: ${{ secrets.VM_SSH_KEY }}
           script: |
-            if [ -f ~/deploy-funding.sh ]; then
-              chmod +x ~/deploy-funding.sh
-              ~/deploy-funding.sh
-            elif [ -f ~/deploy-options.sh ]; then
-              chmod +x ~/deploy-options.sh
-              ~/deploy-options.sh
-            elif [ -f /root/funding-nucleus/scripts/deploy-funding.sh ]; then
-              chmod +x /root/funding-nucleus/scripts/deploy-funding.sh
-              /root/funding-nucleus/scripts/deploy-funding.sh
-            else
-              cd /root/funding-nucleus
-              git pull origin master || git pull origin main
-              npm install --legacy-peer-deps
-              npm run build
-              systemctl restart funding-bot
+            TARGET_DIR=""
+            if [ -d "/root/funding-nucleus" ]; then
+              TARGET_DIR="/root/funding-nucleus"
+            elif [ -d "/root/funding_nucleus" ]; then
+              TARGET_DIR="/root/funding_nucleus"
+            elif [ -d "${HOME}/funding-nucleus" ]; then
+              TARGET_DIR="${HOME}/funding-nucleus"
+            elif [ -d "${HOME}/funding_nucleus" ]; then
+              TARGET_DIR="${HOME}/funding_nucleus"
             fi
 
+            if [ -n "$TARGET_DIR" ]; then
+              cd "$TARGET_DIR"
+              git pull origin master || git pull origin main || true
+              if [ -f scripts/deploy-funding.sh ]; then
+                chmod +x scripts/deploy-funding.sh
+                ./scripts/deploy-funding.sh
+              else
+                npm install --legacy-peer-deps
+                npm run build
+                systemctl restart funding-bot || true
+              fi
+            elif [ -f ~/deploy-funding.sh ]; then
+              chmod +x ~/deploy-funding.sh
+              ~/deploy-funding.sh
+            fi
