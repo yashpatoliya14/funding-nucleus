@@ -4,7 +4,8 @@ import { logger } from './utils/logger.js';
 
 async function main() {
   try {
-    const config = loadConfig();
+    const configPath = process.argv.slice(2).find((arg) => !arg.startsWith('--'));
+    const config = loadConfig(configPath);
     const app = new FundingArbitrageApp(config);
 
     const shutdown = () => {

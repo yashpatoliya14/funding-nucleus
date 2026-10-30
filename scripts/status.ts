@@ -1,11 +1,13 @@
 import { loadConfig } from '../src/config/env.js';
 import { AppDatabase } from '../src/persistence/database.js';
+import { runMigrations } from '../src/persistence/migrations.js';
 import { DailySummaryRepository, TradeRepository } from '../src/persistence/repositories.js';
 
 async function showStatus() {
   const config = loadConfig();
   const db = new AppDatabase(config.appConfig.persistence.path);
   const sqliteDb = db.connect();
+  runMigrations(sqliteDb);
 
   const tradeRepo = new TradeRepository(sqliteDb);
   const dailyRepo = new DailySummaryRepository(sqliteDb);

@@ -6,8 +6,10 @@
   "main": "dist/main.js",
   "scripts": {
     "dev": "tsx watch src/main.ts",
+    "dev:live": "tsx watch src/main.ts ./config/config.live.yaml",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/main.js",
+    "start:live": "node dist/main.js ./config/config.live.yaml",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -23,6 +25,7 @@
     "trade:details": "tsx src/scripts/last-trades.ts",
     "binance:funding": "tsx scripts/check-binance-funding.ts",
     "binance:check": "tsx scripts/check-binance-funding.ts",
+    "funding:diff": "tsx scripts/check-funding-diff.ts",
     "correlation": "tsx scripts/check-correlation.ts",
     "telegram:test": "tsx scripts/test-telegram.ts"
   },
@@ -51,7 +54,7 @@
     "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^26.6.5",
     "@types/ws": "^8.18.2",
-    "@vitest/coverage-v8": "^3.2.4",
+    "@vitest/coverage-v8": "^5.0.5",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vitest": "^5.0.5"

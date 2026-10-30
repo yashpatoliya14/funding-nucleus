@@ -17,6 +17,7 @@ import { RateLimiter } from './rate-limiter.js';
 import { Decimal, toDecimal } from '../utils/decimal.js';
 import { ExchangeApiError, InsufficientMarginError } from '../utils/errors.js';
 import { logger } from '../utils/logger.js';
+import { initializeDns } from '../utils/dns-resolver.js';
 
 export interface BybitClientOptions {
   apiKey: string;
@@ -30,13 +31,30 @@ export class BybitClient implements IExchangeClient {
   private readonly apiKey: string;
   private readonly apiSecret: string;
   private readonly rateLimiter: RateLimiter;
+  private timeOffsetMs: number = 0;
+  private hasSyncedTime: boolean = false;
 
   constructor(options: BybitClientOptions) {
+    initializeDns();
     this.apiKey = options.apiKey;
     this.apiSecret = options.apiSecret;
     this.baseUrl = options.testnet ? 'https://api-testnet.bybit.com' : 'https://api.bybit.com';
     // 50 requests per second limit, token bucket throttled
     this.rateLimiter = new RateLimiter({ maxRequests: 50, intervalMs: 1000 });
+  }
+
+  async syncTime(): Promise<number> {
+    try {
+      const t0 = Date.now();
+      const serverTime = await this.getServerTime();
+      const t1 = Date.now();
+      const latency = Math.floor((t1 - t0) / 2);
+      this.timeOffsetMs = serverTime - (t0 + latency);
+      this.hasSyncedTime = true;
+      return this.timeOffsetMs;
+    } catch {
+      return 0;
+    }
   }
 
   private async requestApi<T>(
@@ -48,7 +66,12 @@ export class BybitClient implements IExchangeClient {
     return this.rateLimiter.executeWithRetry(async () => {
       let query = new URLSearchParams();
       let bodyString = '';
-      const timestamp = Date.now();
+
+      if (authenticated && !this.hasSyncedTime && endpoint !== '/v5/market/time') {
+        await this.syncTime();
+      }
+
+      const timestamp = Date.now() + this.timeOffsetMs;
 
       if (method === 'GET') {
         for (const [k, v] of Object.entries(params)) {
@@ -69,7 +92,7 @@ export class BybitClient implements IExchangeClient {
           throw new ExchangeApiError(this.exchangeName, 'API key and secret required for authenticated endpoint');
         }
         const signPayload = method === 'GET' ? query.toString() : bodyString;
-        const authHeaders = signBybit(this.apiKey, this.apiSecret, timestamp, signPayload);
+        const authHeaders = signBybit(this.apiKey, this.apiSecret, timestamp, signPayload, 10000);
         headers = { ...headers, ...authHeaders };
       }
 

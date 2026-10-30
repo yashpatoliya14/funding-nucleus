@@ -1,0 +1,84 @@
+# ==============================================================================
+# Binance - Bybit Funding Rate Arbitrage Engine — LIVE PRODUCTION CONFIGURATION
+# ==============================================================================
+
+app:
+  # 'live' switches the engine to real exchange execution using real capital
+  mode: live
+  log_level: INFO
+
+persistence:
+  driver: sqlite
+  # Dedicated live database to isolate real trade history and accounting
+  path: ./data/funding-bot-live.sqlite
+
+symbols:
+  # Cache TTL for symbol specifications and lot/price filters
+  cache_ttl_hours: 24
+  refresh_trading_status_seconds: 30
+
+strategy:
+  # Minutes before funding settlement (00:00, 08:00, 16:00 UTC) to enter position
+  entry_lead_minutes: 10
+
+  # Seconds to wait after funding settlement before initiating flat exit
+  target_exit_delay_seconds: 60
+
+  # Minimum required net profit in USD after deducting all maker/taker fees and slippage
+  minimum_net_profit_usd: 0.50
+
+  # Minimum required funding spread (0.05% = 54.75% Annualized APR)
+  minimum_funding_edge_pct: 0.05
+
+  # Additional safety buffer for margin & fee variations
+  risk_buffer_usd: 0.15
+
+  # CRITICAL INVARIANT: Only trade pairs where Binance & Bybit settle at the identical timestamp
+  require_aligned_funding_events: true
+
+execution:
+  # Market orders only (limit / maker orders strictly prohibited by execution invariants)
+  order_type: MARKET
+
+  # Execute both exchange legs simultaneously for minimal unhedged execution window
+  parallel_entry: true
+
+  # Safety limit: Maximum seconds allowed in unhedged state before emergency abort & flatten
+  maximum_unhedged_seconds: 10
+
+  # Maximum timeout for one-leg recovery execution
+  maximum_recovery_seconds: 15
+
+  # Max acceptable orderbook depth slippage in basis points (10 bps = 0.10%)
+  maximum_slippage_bps: 10
+
+  # Maximum allowable dollar notional mismatch between the two legs (0.5%)
+  maximum_notional_mismatch_pct: 0.5
+
+  # Exit orders MUST use reduce-only to guarantee positions never flip into opposite exposure
+  reduce_only_exits: true
+
+risk:
+  # Conservative leverage cap for real capital protection (Max 3x to 5x recommended)
+  default_leverage_cap: 3
+
+  # Dollar exposure per single leg (e.g., $50 on Binance, $50 on Bybit)
+  maximum_notional_per_leg_usd: 50.0
+
+  # Maximum number of simultaneous active arbitrage pairs
+  maximum_concurrent_trades: 1
+
+  # Hard stop: If cumulative net losses hit this threshold in a day, halt trading immediately
+  maximum_daily_loss_usd: 10.0
+
+  # Maximum total portfolio notional across all legs ($50 Binance + $50 Bybit = $100 total)
+  maximum_aggregate_notional_usd: 100.0
+
+monitoring:
+  # Set to true once you set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in .env
+  telegram_enabled: false
+  monitoring_enabled: true
+  duration_days: 7
+  daily_summary_hour_utc: 16
+  daily_summary_minute_utc: 5
+

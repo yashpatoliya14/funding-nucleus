@@ -30,6 +30,8 @@ export class BinanceClient implements IExchangeClient {
   private readonly apiKey: string;
   private readonly apiSecret: string;
   private readonly rateLimiter: RateLimiter;
+  private timeOffsetMs: number = 0;
+  private hasSyncedTime: boolean = false;
 
   constructor(options: BinanceClientOptions) {
     initializeDns();
@@ -38,6 +40,20 @@ export class BinanceClient implements IExchangeClient {
     this.baseUrl = options.testnet ? 'https://testnet.binancefuture.com' : 'https://fapi.binance.com';
     // 2400 weight per minute limit, token bucket conservatively throttled
     this.rateLimiter = new RateLimiter({ maxRequests: 1200, intervalMs: 60000 });
+  }
+
+  async syncTime(): Promise<number> {
+    try {
+      const t0 = Date.now();
+      const serverTime = await this.getServerTime();
+      const t1 = Date.now();
+      const latency = Math.floor((t1 - t0) / 2);
+      this.timeOffsetMs = serverTime - (t0 + latency);
+      this.hasSyncedTime = true;
+      return this.timeOffsetMs;
+    } catch {
+      return 0;
+    }
   }
 
   private async requestApi<T>(
@@ -62,10 +78,13 @@ export class BinanceClient implements IExchangeClient {
         if (!this.apiKey || !this.apiSecret) {
           throw new ExchangeApiError(this.exchangeName, 'API key and secret required for authenticated endpoint');
         }
+        if (!this.hasSyncedTime && endpoint !== '/fapi/v1/time') {
+          await this.syncTime();
+        }
         headers['X-MBX-APIKEY'] = this.apiKey;
-        const timestamp = Date.now();
+        const timestamp = Date.now() + this.timeOffsetMs;
         query.append('timestamp', timestamp.toString());
-        query.append('recvWindow', '5000');
+        query.append('recvWindow', '10000');
         const signature = signBinance(query.toString(), this.apiSecret);
         query.append('signature', signature);
       }

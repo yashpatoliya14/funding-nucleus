@@ -1,0 +1,45 @@
+name: Deploy to VM
+
+on:
+  push:
+    branches:
+      - master
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Validate deploy secrets
+        run: |
+          test -n "${{ secrets.VM_HOST }}" || (echo "VM_HOST is missing" && exit 1)
+          test -n "${{ secrets.VM_USER }}" || (echo "VM_USER is missing" && exit 1)
+          test -n "${{ secrets.VM_PORT }}" || (echo "VM_PORT is missing" && exit 1)
+          test -n "${{ secrets.VM_SSH_KEY }}" || (echo "VM_SSH_KEY is missing" && exit 1)
+
+      - name: Deploy to VM
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USER }}
+          port: ${{ secrets.VM_PORT }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          script: |
+            if [ -f ~/deploy-funding.sh ]; then
+              chmod +x ~/deploy-funding.sh
+              ~/deploy-funding.sh
+            elif [ -f ~/deploy-options.sh ]; then
+              chmod +x ~/deploy-options.sh
+              ~/deploy-options.sh
+            elif [ -f /root/funding-nucleus/scripts/deploy-funding.sh ]; then
+              chmod +x /root/funding-nucleus/scripts/deploy-funding.sh
+              /root/funding-nucleus/scripts/deploy-funding.sh
+            else
+              cd /root/funding-nucleus
+              git pull origin master || git pull origin main
+              npm install --legacy-peer-deps
+              npm run build
+              systemctl restart funding-bot
+            fi
+

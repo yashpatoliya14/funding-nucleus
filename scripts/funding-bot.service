@@ -1,0 +1,35 @@
+[Unit]
+Description=Binance-Bybit Funding Arbitrage Trading Bot
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/root/funding-nucleus
+Environment=NODE_ENV=production
+Environment=CONFIG_PATH=./config/config.live.yaml
+
+# Path to node and compiled entry point
+ExecStart=/usr/bin/node dist/main.js ./config/config.live.yaml
+
+# Graceful stop with SIGINT
+KillSignal=SIGINT
+TimeoutStopSec=30
+KillMode=mixed
+
+# Auto-restart on unexpected crashes
+Restart=always
+RestartSec=5s
+
+# Security and resource limits
+LimitNOFILE=65536
+
+# Standard logging to systemd journal
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=funding-bot
+
+[Install]
+WantedBy=multi-user.target
