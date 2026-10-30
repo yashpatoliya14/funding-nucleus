@@ -10,23 +10,24 @@ Group=root
 WorkingDirectory=/root/funding-nucleus
 Environment=NODE_ENV=production
 Environment=CONFIG_PATH=./config/config.live.yaml
+Environment=PATH=/root/.nvm/versions/node/v24.21.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
-# Path to node and compiled entry point
-ExecStart=/usr/bin/node dist/main.js ./config/config.live.yaml
+# Node executable path
+ExecStart=/root/.nvm/versions/node/v24.21.0/bin/node dist/main.js ./config/config.live.yaml
 
-# Graceful stop with SIGINT
+# Graceful stop
 KillSignal=SIGINT
 TimeoutStopSec=30
 KillMode=mixed
 
-# Auto-restart on unexpected crashes
+# Auto-recovery
 Restart=always
 RestartSec=5s
 
-# Security and resource limits
+# Resource limits
 LimitNOFILE=65536
 
-# Standard logging to systemd journal
+# Journal logging
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=funding-bot
