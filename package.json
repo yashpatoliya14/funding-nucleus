@@ -20,6 +20,7 @@
     "status": "tsx scripts/status.ts",
     "validate-credentials": "tsx scripts/validate-credentials.ts",
     "check:connection": "tsx scripts/check-connection.ts",
+    "wallet:info": "tsx scripts/wallet-info.ts",
     "check:ip": "tsx scripts/check-connection.ts",
     "reconcile-positions": "tsx scripts/reconcile-positions.ts",
     "emergency-flatten": "tsx scripts/emergency-flatten.ts",
