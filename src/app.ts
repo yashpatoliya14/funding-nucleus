@@ -375,43 +375,57 @@ export class FundingArbitrageApp {
                 return `${idx + 1}. *${coin}* | Diff: \`${edgePct}%\`${isSelected}\n   • BI: \`${bSign}${bRate}%\` | BY: \`${bySign}${byRate}%\``;
               });
 
-              const alertText = [
-                `🎯 *Selected Coin:* \`${evaluated.opportunity.mapping.normalized_symbol}\``,
-                `🔄 *Direction:* \`${evaluated.profitability.direction}\``,
-                `💵 *Expected Net Profit:* \`$${evaluated.profitability.expectedNetProfitUsd.toFixed(2)}\``,
-                `⚡ *Spread (Edge):* \`${parseFloat(evaluated.opportunity.fundingDiffPct.toString()).toFixed(4)}%\``,
-                `⏱️ *Funding Payment Due In:* \`~${this.config.appConfig.strategy.entry_lead_minutes}m\``,
-                '',
-                `📊 *Top 5 Funding Spreads At Time of Entry:*`,
-                top5Lines.join('\n'),
-              ].join('\n');
-
-              // Build Top 5 funding spread snapshot text before entering
-              const top5 = opportunities.slice(0, 5);
-              const top5Lines = top5.map((opp, idx) => {
-                const coin = opp.mapping.normalized_symbol;
-                const edgePct = parseFloat(opp.fundingDiffPct.toString()).toFixed(4);
-                const bRate = (parseFloat(opp.binanceRate.toString()) * 100).toFixed(4);
-                const byRate = (parseFloat(opp.bybitRate.toString()) * 100).toFixed(4);
-                const bSign = parseFloat(bRate) > 0 ? '+' : '';
-                const bySign = parseFloat(byRate) > 0 ? '+' : '';
-                const isSelected = coin === evaluated.opportunity.mapping.normalized_symbol ? ' 👈 *[SELECTED]*' : '';
-                return `${idx + 1}. *${coin}* | Diff: \`${edgePct}%\`${isSelected}\n   • BI: \`${bSign}${bRate}%\` | BY: \`${bySign}${byRate}%\``;
-              });
+              // Detailed pre-trade execution breakdown
+              const coin = evaluated.opportunity.mapping.normalized_symbol;
+              const direction = evaluated.profitability.direction;
+              const biAction = direction === 'SHORT_BINANCE_LONG_BYBIT' ? 'SHORT (SELL)' : 'LONG (BUY)';
+              const byAction = direction === 'SHORT_BINANCE_LONG_BYBIT' ? 'LONG (BUY)' : 'SHORT (SELL)';
+              const biQty = evaluated.sizing.binanceQuantity.toFixed(4);
+              const byQty = evaluated.sizing.bybitQuantity.toFixed(4);
+              const biNotional = evaluated.sizing.binanceActualNotionalUsd.toFixed(2);
+              const byNotional = evaluated.sizing.bybitActualNotionalUsd.toFixed(2);
+              const appliedLeverage = evaluated.sizing.appliedLeverage;
+              const biMargin = evaluated.sizing.binanceActualNotionalUsd.dividedBy(appliedLeverage).toFixed(2);
+              const byMargin = evaluated.sizing.bybitActualNotionalUsd.dividedBy(appliedLeverage).toFixed(2);
+              const edgePct = parseFloat(evaluated.opportunity.fundingDiffPct.toString()).toFixed(4);
+              const netProfitUsd = evaluated.profitability.expectedNetProfitUsd.toFixed(2);
+              const biCashFlow = evaluated.profitability.expectedFundingCashFlowBinance.toFixed(3);
+              const byCashFlow = evaluated.profitability.expectedFundingCashFlowBybit.toFixed(3);
+              const estFees = evaluated.profitability.estimatedEntryFees.plus(evaluated.profitability.estimatedExitFees).toFixed(3);
+              const estSlippage = evaluated.profitability.estimatedEntrySlippageUsd.plus(evaluated.profitability.estimatedExitSlippageUsd).toFixed(3);
 
               const alertText = [
-                `🎯 *Selected Coin:* \`${evaluated.opportunity.mapping.normalized_symbol}\``,
-                `🔄 *Direction:* \`${evaluated.profitability.direction}\``,
-                `💵 *Expected Net Profit:* \`$${evaluated.profitability.expectedNetProfitUsd.toFixed(2)}\``,
-                `⚡ *Spread (Edge):* \`${parseFloat(evaluated.opportunity.fundingDiffPct.toString()).toFixed(4)}%\``,
-                `⏱️ *Funding Payment Due In:* \`~${this.config.appConfig.strategy.entry_lead_minutes}m\``,
+                `🚨 *PRE-TRADE EXECUTION ALERT: ${coin}* 🚨`,
+                `━━━━━━━━━━━━━━━━━━━━━━`,
+                `🎯 *Selected Pair:* \`${coin}\` (Binance & Bybit)`,
+                `🔄 *Strategy Direction:* \`${direction}\``,
+                `⚖️ *Common Safe Leverage:* \`${appliedLeverage}x\` (Unified across both exchanges)`,
                 '',
-                `📊 *Top 5 Funding Spreads At Time of Entry:*`,
+                `📊 *Detailed Leg Breakdown:*`,
+                `• *Binance:* \`${biAction}\``,
+                `   └ Notional: \`$${biNotional}\` | Qty: \`${biQty}\``,
+                `   └ Margin Required: \`$${biMargin}\` (\`${appliedLeverage}x\`)`,
+                `• *Bybit:* \`${byAction}\``,
+                `   └ Notional: \`$${byNotional}\` | Qty: \`${byQty}\``,
+                `   └ Margin Required: \`$${byMargin}\` (\`${appliedLeverage}x\`)`,
+                '',
+                `💰 *Profitability & Cash Flow Breakdown:*`,
+                `• *Funding Spread (Edge):* \`${edgePct}%\``,
+                `• *Binance Funding Cashflow:* \`$${biCashFlow}\``,
+                `• *Bybit Funding Cashflow:* \`$${byCashFlow}\``,
+                `• *Est. Trading Fees (Entry+Exit):* \`-$${estFees}\``,
+                `• *Est. Slippage Cost:* \`-$${estSlippage}\``,
+                `• *Expected Net PnL:* \`+$${netProfitUsd}\``,
+                `• *Target Settlement In:* \`~${this.config.appConfig.strategy.entry_lead_minutes} minutes\``,
+                '',
+                `📋 *Top 5 Funding Spreads At Time of Entry:*`,
                 top5Lines.join('\n'),
+                `━━━━━━━━━━━━━━━━━━━━━━`,
+                `🚀 *Orders are being submitted concurrently to both exchanges...*`
               ].join('\n');
 
               await this.telegram.sendAlert(
-                'Opportunity Approved — Executing Trade',
+                `⚡ Arbitrage Entry: ${coin} (${direction})`,
                 alertText,
                 'INFO'
               );

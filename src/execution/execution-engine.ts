@@ -100,6 +100,18 @@ export class ExecutionEngine {
       const bSide = candidate.profitability.direction === 'SHORT_BINANCE_LONG_BYBIT' ? 'SELL' : 'BUY';
       const bySide = candidate.profitability.direction === 'SHORT_BINANCE_LONG_BYBIT' ? 'BUY' : 'SELL';
 
+      // Set synchronized common leverage before opening positions
+      if (candidate.sizing.appliedLeverage) {
+        await Promise.allSettled([
+          this.binanceClient.setLeverage ? this.binanceClient.setLeverage(bSymbol, candidate.sizing.appliedLeverage) : Promise.resolve(),
+          this.bybitClient.setLeverage ? this.bybitClient.setLeverage(bySymbol, candidate.sizing.appliedLeverage) : Promise.resolve(),
+        ]);
+        logger.info(
+          { coin, leverage: candidate.sizing.appliedLeverage },
+          'Synchronized common leverage on Binance and Bybit'
+        );
+      }
+
       // Submit both market orders concurrently
       const [bOrderResult, byOrderResult] = await Promise.allSettled([
         this.orderManager.executeMarketOrder(

@@ -67,6 +67,18 @@ export class TelegramNotifier {
     this.mockSender = sender;
   }
 
+  public getChatId(): string | undefined {
+    return this.chatId;
+  }
+
+  public getBotToken(): string | undefined {
+    return this.botToken;
+  }
+
+  public isEnabled(): boolean {
+    return this.enabled;
+  }
+
   public isMonitoringActive(): boolean {
     return Date.now() < this.monitoringExpiresAt;
   }
