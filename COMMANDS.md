@@ -10,7 +10,8 @@ This document contains the complete list of CLI commands, scanners, diagnostics,
 3. [Bot Execution & Operating Modes](#3-bot-execution--operating-modes)
 4. [Safety, Position Management & Kill Switches](#4-safety-position-management--kill-switches)
 5. [Linux VM & Systemd Background Service Operations](#5-linux-vm--systemd-background-service-operations)
-6. [Automated Telegram Alerts & Reports](#6-automated-telegram-alerts--reports)
+6. [Interactive Telegram Commands (Chat Control)](#6-interactive-telegram-commands-chat-control)
+7. [Automated Telegram Alerts & Reports](#7-automated-telegram-alerts--reports)
 
 ---
 
@@ -232,7 +233,22 @@ systemctl restart funding
 
 ---
 
-## 6. Automated Telegram Alerts & Reports
+## 6. Interactive Telegram Commands (Chat Control)
+
+You can send commands directly in your Telegram chat to trigger actions on the running bot in real-time. No terminal access needed! Works with or without slash `/`.
+
+| Telegram Message | Triggered Action | Response Summary |
+| :--- | :--- | :--- |
+| **`wallet`** (or `bal`) | Runs wallet & margin query | Shows Binance & Bybit USDT balances, margin availability, capital bottleneck, and maximum safe position size (at 3x & 5x). |
+| **`top5`** (or `diff`, `rates`) | Scans live market spreads | Returns the Top 5 highest funding rate difference pairs across Binance & Bybit with live rates, spreads, and annualized APR. |
+| **`status`** (or `health`) | Checks system vitals | Displays engine health (`HEALTHY`, `TRIPPED`, `KILL_SWITCH`), active trade count, today's trade count, funding income, fees, and net realized P&L. |
+| **`trades`** (or `pos`) | Audits open trades | Details any currently active arbitrage pair, entry state, leg notionals, and expected net profit. |
+| **`flatten`** (or `kill`) | 🚨 Emergency Kill Switch | Immediately cancels all orders, executes market reduce-only liquidations on all open positions across both exchanges, and activates the kill switch. |
+| **`help`** (or `menu`) | Help menu | Lists all available interactive Telegram commands. |
+
+---
+
+## 7. Automated Telegram Alerts & Reports
 
 The engine automatically pushes alerts to your Telegram chat (`6218550123`):
 

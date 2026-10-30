@@ -34,6 +34,7 @@ import { TradeStateMachine } from './execution/state-machine.js';
 import { ExecutionEngine } from './execution/execution-engine.js';
 import { FundingScheduler } from './scheduler/funding-scheduler.js';
 import { TelegramNotifier } from './notifications/telegram.js';
+import { TelegramCommander } from './notifications/telegram-commander.js';
 import { SystemHealth } from './monitoring/health.js';
 import { MetricsCollector } from './monitoring/metrics.js';
 import { logger } from './utils/logger.js';
@@ -52,6 +53,7 @@ export class FundingArbitrageApp {
   private killSwitch: KillSwitch;
   private executionEngine: ExecutionEngine;
   private telegram: TelegramNotifier;
+  private telegramCommander?: TelegramCommander;
   private health: SystemHealth;
   private metrics: MetricsCollector;
   private tradeRepo: TradeRepository;
@@ -162,6 +164,25 @@ export class FundingArbitrageApp {
       botToken: config.env.TELEGRAM_BOT_TOKEN,
       chatId: config.env.TELEGRAM_CHAT_ID,
     });
+
+    if (config.appConfig.monitoring.telegram_enabled && config.env.TELEGRAM_BOT_TOKEN && config.env.TELEGRAM_CHAT_ID) {
+      this.telegramCommander = new TelegramCommander({
+        botToken: config.env.TELEGRAM_BOT_TOKEN,
+        chatId: config.env.TELEGRAM_CHAT_ID,
+        binanceClient: this.binanceClient,
+        bybitClient: this.bybitClient,
+        tradeRepo: this.tradeRepo,
+        dailyRepo: this.dailyRepo,
+        circuitBreaker: this.circuitBreaker,
+        killSwitch: this.killSwitch,
+        telegramNotifier: this.telegram,
+        getOpportunitiesSnapshot: async () => {
+          const symbols = this.symbolCache.getAllActive();
+          return this.scanner.scanOpportunities(symbols);
+        },
+      });
+    }
+
     this.health = new SystemHealth(sqliteDb, this.binanceClient, this.bybitClient, this.circuitBreaker, this.marketHealth);
     this.metrics = new MetricsCollector(sqliteDb, dailyRepo);
   }
@@ -285,6 +306,11 @@ export class FundingArbitrageApp {
 
     // Initial symbol cache refresh
     const activeSymbols = await this.symbolCache.refreshIfExpired();
+
+    // Start Telegram command listener if configured
+    if (this.telegramCommander) {
+      this.telegramCommander.start();
+    }
 
     // Send formatted startup broadcast to Telegram
     const modeStr = this.config.appConfig.app.mode.toUpperCase();
@@ -457,6 +483,9 @@ export class FundingArbitrageApp {
   stop(): void {
     logger.info('Stopping Funding Arbitrage Bot...');
     this.isRunning = false;
+    if (this.telegramCommander) {
+      this.telegramCommander.stop();
+    }
     this.releaseLock();
     this.db.close();
   }
