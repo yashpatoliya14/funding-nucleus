@@ -19,6 +19,8 @@
     "db:migrate": "tsx src/persistence/migrations.ts",
     "status": "tsx scripts/status.ts",
     "validate-credentials": "tsx scripts/validate-credentials.ts",
+    "check:connection": "tsx scripts/check-connection.ts",
+    "check:ip": "tsx scripts/check-connection.ts",
     "reconcile-positions": "tsx scripts/reconcile-positions.ts",
     "emergency-flatten": "tsx scripts/emergency-flatten.ts",
     "trades:last": "tsx src/scripts/last-trades.ts",

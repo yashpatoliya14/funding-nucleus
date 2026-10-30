@@ -208,7 +208,30 @@ export class FundingArbitrageApp {
     await this.startupReconciliation();
 
     // Initial symbol cache refresh
-    await this.symbolCache.refreshIfExpired();
+    const activeSymbols = await this.symbolCache.refreshIfExpired();
+
+    // Send formatted startup broadcast to Telegram
+    const modeStr = this.config.appConfig.app.mode.toUpperCase();
+    const isLive = this.config.appConfig.app.mode === 'live';
+    const modeEmoji = isLive ? '🟢' : '🟡';
+
+    const startupMessage = [
+      `${modeEmoji} *Mode:* \`${modeStr}\``,
+      `🔄 *Matched Pairs:* \`${activeSymbols.length}\` perpetuals`,
+      `⚙️ *Max Leg Size:* \`$${this.config.appConfig.risk.maximum_notional_per_leg_usd}\``,
+      `🛡️ *Leverage Cap:* \`${this.config.appConfig.risk.default_leverage_cap}x\``,
+      `🛑 *Daily Loss Stop:* \`$${this.config.appConfig.risk.maximum_daily_loss_usd}\``,
+      `⏱️ *Entry Window:* \`${this.config.appConfig.strategy.entry_lead_minutes}m\` pre-funding`,
+      `📦 *Database:* \`HEALTHY (WAL mode)\``,
+      `🚀 *Status:* Trading engine running and scanning...`,
+    ].join('\n');
+
+    await this.telegram.notifyEvent(
+      'BOT_STARTED',
+      `Arbitrage Engine Online [${modeStr}]`,
+      startupMessage,
+      'INFO'
+    );
 
     // Main Scanning & Trading Loop
     while (this.isRunning) {
