@@ -362,9 +362,58 @@ export class FundingArbitrageApp {
               // Pre-trade risk check
               await this.riskManager.validatePreTrade(evaluated);
 
+              // Build Top 5 funding spread snapshot text before entering
+              const top5 = opportunities.slice(0, 5);
+              const top5Lines = top5.map((opp, idx) => {
+                const coin = opp.mapping.normalized_symbol;
+                const edgePct = parseFloat(opp.fundingDiffPct.toString()).toFixed(4);
+                const bRate = (parseFloat(opp.binanceRate.toString()) * 100).toFixed(4);
+                const byRate = (parseFloat(opp.bybitRate.toString()) * 100).toFixed(4);
+                const bSign = parseFloat(bRate) > 0 ? '+' : '';
+                const bySign = parseFloat(byRate) > 0 ? '+' : '';
+                const isSelected = coin === evaluated.opportunity.mapping.normalized_symbol ? ' 👈 *[SELECTED]*' : '';
+                return `${idx + 1}. *${coin}* | Diff: \`${edgePct}%\`${isSelected}\n   • BI: \`${bSign}${bRate}%\` | BY: \`${bySign}${byRate}%\``;
+              });
+
+              const alertText = [
+                `🎯 *Selected Coin:* \`${evaluated.opportunity.mapping.normalized_symbol}\``,
+                `🔄 *Direction:* \`${evaluated.profitability.direction}\``,
+                `💵 *Expected Net Profit:* \`$${evaluated.profitability.expectedNetProfitUsd.toFixed(2)}\``,
+                `⚡ *Spread (Edge):* \`${parseFloat(evaluated.opportunity.fundingDiffPct.toString()).toFixed(4)}%\``,
+                `⏱️ *Funding Payment Due In:* \`~${this.config.appConfig.strategy.entry_lead_minutes}m\``,
+                '',
+                `📊 *Top 5 Funding Spreads At Time of Entry:*`,
+                top5Lines.join('\n'),
+              ].join('\n');
+
+              // Build Top 5 funding spread snapshot text before entering
+              const top5 = opportunities.slice(0, 5);
+              const top5Lines = top5.map((opp, idx) => {
+                const coin = opp.mapping.normalized_symbol;
+                const edgePct = parseFloat(opp.fundingDiffPct.toString()).toFixed(4);
+                const bRate = (parseFloat(opp.binanceRate.toString()) * 100).toFixed(4);
+                const byRate = (parseFloat(opp.bybitRate.toString()) * 100).toFixed(4);
+                const bSign = parseFloat(bRate) > 0 ? '+' : '';
+                const bySign = parseFloat(byRate) > 0 ? '+' : '';
+                const isSelected = coin === evaluated.opportunity.mapping.normalized_symbol ? ' 👈 *[SELECTED]*' : '';
+                return `${idx + 1}. *${coin}* | Diff: \`${edgePct}%\`${isSelected}\n   • BI: \`${bSign}${bRate}%\` | BY: \`${bySign}${byRate}%\``;
+              });
+
+              const alertText = [
+                `🎯 *Selected Coin:* \`${evaluated.opportunity.mapping.normalized_symbol}\``,
+                `🔄 *Direction:* \`${evaluated.profitability.direction}\``,
+                `💵 *Expected Net Profit:* \`$${evaluated.profitability.expectedNetProfitUsd.toFixed(2)}\``,
+                `⚡ *Spread (Edge):* \`${parseFloat(evaluated.opportunity.fundingDiffPct.toString()).toFixed(4)}%\``,
+                `⏱️ *Funding Payment Due In:* \`~${this.config.appConfig.strategy.entry_lead_minutes}m\``,
+                '',
+                `📊 *Top 5 Funding Spreads At Time of Entry:*`,
+                top5Lines.join('\n'),
+              ].join('\n');
+
               await this.telegram.sendAlert(
-                'Opportunity Approved',
-                `Entering ${evaluated.opportunity.mapping.normalized_symbol} (${evaluated.profitability.direction})\nExpected Net Profit: $${evaluated.profitability.expectedNetProfitUsd.toFixed(2)}`
+                'Opportunity Approved — Executing Trade',
+                alertText,
+                'INFO'
               );
 
               // Execute trade lifecycle
