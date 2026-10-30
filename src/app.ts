@@ -168,8 +168,28 @@ export class FundingArbitrageApp {
 
   private acquireLock(): void {
     if (fs.existsSync(this.lockFilePath)) {
-      const pid = fs.readFileSync(this.lockFilePath, 'utf8').trim();
-      throw new Error(`Instance lockfile exists (${this.lockFilePath}) held by PID ${pid}. Another bot instance may be running!`);
+      const pidStr = fs.readFileSync(this.lockFilePath, 'utf8').trim();
+      const pid = parseInt(pidStr, 10);
+
+      // Check if the holding process is actually alive
+      let isProcessAlive = false;
+      if (!isNaN(pid)) {
+        try {
+          process.kill(pid, 0); // Signal 0 checks process existence without killing it
+          isProcessAlive = true;
+        } catch {
+          isProcessAlive = false;
+        }
+      }
+
+      if (isProcessAlive) {
+        throw new Error(`Instance lockfile exists (${this.lockFilePath}) held by active PID ${pid}. Another bot instance is currently running!`);
+      } else {
+        logger.warn({ deadPid: pidStr }, 'Stale lockfile detected from terminated process. Removing stale lock.');
+        try {
+          fs.unlinkSync(this.lockFilePath);
+        } catch {}
+      }
     }
     fs.writeFileSync(this.lockFilePath, process.pid.toString(), 'utf8');
   }
