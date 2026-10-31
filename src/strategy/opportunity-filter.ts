@@ -62,14 +62,33 @@ export class OpportunityFilter {
         };
       }
 
-      // 2. Position sizing
+      // 2. Query dynamic maximum leverage for this specific coin directly from both exchanges
+      let bMaxLev = bInst.maxLeverage || 20;
+      let byMaxLev = byInst.maxLeverage || 25;
+
+      const [liveBLev, liveByLev] = await Promise.allSettled([
+        this.binanceClient.getMaxLeverage ? this.binanceClient.getMaxLeverage(opp.mapping.binance_symbol) : Promise.resolve(bMaxLev),
+        this.bybitClient.getMaxLeverage ? this.bybitClient.getMaxLeverage(opp.mapping.bybit_symbol) : Promise.resolve(byMaxLev),
+      ]);
+
+      if (liveBLev.status === 'fulfilled' && liveBLev.value > 0) {
+        bMaxLev = liveBLev.value;
+      }
+      if (liveByLev.status === 'fulfilled' && liveByLev.value > 0) {
+        byMaxLev = liveByLev.value;
+      }
+
+      const dynamicBInst = { ...bInst, maxLeverage: bMaxLev };
+      const dynamicByInst = { ...byInst, maxLeverage: byMaxLev };
+
+      // Position sizing using the dynamic common leverage min(Binance coin max, Bybit coin max, cap)
       const targetNotional = toDecimal(this.config.risk.maximum_notional_per_leg_usd);
       const sizing = PositionSizer.calculateSizing(
         targetNotional,
         opp.binanceMarkPrice,
         opp.bybitMarkPrice,
-        bInst,
-        byInst,
+        dynamicBInst,
+        dynamicByInst,
         this.config.risk.default_leverage_cap,
         this.config.execution.maximum_notional_mismatch_pct
       );

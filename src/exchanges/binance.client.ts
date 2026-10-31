@@ -346,6 +346,24 @@ export class BinanceClient implements IExchangeClient {
     }));
   }
 
+  async getMaxLeverage(symbol: string): Promise<number> {
+    try {
+      const res = await this.requestApi<any[]>('GET', '/fapi/v1/leverageBracket', { symbol }, true);
+      const brackets = Array.isArray(res) && res[0]?.brackets ? res[0].brackets : [];
+      if (brackets.length > 0) {
+        let max = 0;
+        for (const b of brackets) {
+          const lev = Number(b.initialLeverage);
+          if (lev > max) max = lev;
+        }
+        if (max > 0) return max;
+      }
+    } catch {
+      // Fallback if leverageBracket requires specific symbol or permissions
+    }
+    return 20; // Safe default for Binance perpetuals
+  }
+
   async setLeverage(symbol: string, leverage: number): Promise<boolean> {
     await this.requestApi<any>('POST', '/fapi/v1/leverage', { symbol, leverage }, true);
     return true;

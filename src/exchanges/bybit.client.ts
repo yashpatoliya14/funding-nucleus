@@ -376,6 +376,22 @@ export class BybitClient implements IExchangeClient {
     }));
   }
 
+  async getMaxLeverage(symbol: string): Promise<number> {
+    try {
+      const data = await this.requestApi<any>('GET', '/v5/market/instruments-info', {
+        category: 'linear',
+        symbol,
+      });
+      const item = data?.list?.[0];
+      if (item?.leverageFilter?.maxLeverage) {
+        return Number(item.leverageFilter.maxLeverage);
+      }
+    } catch {
+      // Fallback
+    }
+    return 25;
+  }
+
   async setLeverage(symbol: string, leverage: number): Promise<boolean> {
     try {
       await this.requestApi<any>('POST', '/v5/position/set-leverage', {

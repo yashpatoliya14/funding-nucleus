@@ -65,6 +65,11 @@ export interface IExchangeClient {
   getFundingHistory(symbol: string, startTime?: number, limit?: number): Promise<FundingTransaction[]>;
 
   /**
+   * Retrieves maximum available leverage for a specific symbol directly from the exchange.
+   */
+  getMaxLeverage?(symbol: string): Promise<number>;
+
+  /**
    * Sets leverage for a given symbol.
    */
   setLeverage?(symbol: string, leverage: number): Promise<boolean>;
