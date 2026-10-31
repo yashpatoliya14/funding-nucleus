@@ -180,6 +180,10 @@ export class FundingArbitrageApp {
           const symbols = this.symbolCache.getAllActive();
           return this.scanner.scanOpportunities(symbols);
         },
+        evaluateOpportunity: async (opp: any) => {
+          return this.opportunityFilter.evaluateOpportunity(opp);
+        },
+        entryLeadMinutes: config.appConfig.strategy.entry_lead_minutes,
       });
     }
 

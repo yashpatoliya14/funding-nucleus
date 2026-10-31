@@ -256,6 +256,7 @@ You can send commands directly in your Telegram chat to trigger actions on the r
 | Telegram Message | Triggered Action | Response Summary |
 | :--- | :--- | :--- |
 | **`wallet`** (or `bal`) | Runs wallet & margin query | Shows Binance & Bybit USDT balances, margin availability, capital bottleneck, and maximum safe position size (at 3x & 5x). |
+| **`next`** (or `plan`) | Next planned trade | 🎯 Full details of the next planned trade: target coin, funding spread, dynamic leverage, required margins, and entry countdown. |
 | **`top5`** (or `diff`, `rates`) | Scans live market spreads | Returns the Top 5 highest funding rate difference pairs across Binance & Bybit with live rates, spreads, and annualized APR. |
 | **`status`** (or `health`) | Checks system vitals | Displays engine health (`HEALTHY`, `TRIPPED`, `KILL_SWITCH`), active trade count, today's trade count, funding income, fees, and net realized P&L. |
 | **`trades`** (or `pos`) | Audits open trades | Details any currently active arbitrage pair, entry state, leg notionals, and expected net profit. |

@@ -19,6 +19,8 @@ export interface TelegramCommanderOptions {
   killSwitch: KillSwitch;
   telegramNotifier: TelegramNotifier;
   getOpportunitiesSnapshot?: () => Promise<any[]>;
+  evaluateOpportunity?: (opp: any) => Promise<any>;
+  entryLeadMinutes?: number;
 }
 
 export class TelegramCommander {
@@ -32,6 +34,8 @@ export class TelegramCommander {
   private killSwitch: KillSwitch;
   private telegramNotifier: TelegramNotifier;
   private getOpportunitiesSnapshot?: () => Promise<any[]>;
+  private evaluateOpportunity?: (opp: any) => Promise<any>;
+  private entryLeadMinutes: number = 10;
   private isPolling: boolean = false;
   private lastUpdateId: number = 0;
 
@@ -46,6 +50,8 @@ export class TelegramCommander {
     this.killSwitch = options.killSwitch;
     this.telegramNotifier = options.telegramNotifier;
     this.getOpportunitiesSnapshot = options.getOpportunitiesSnapshot;
+    this.evaluateOpportunity = options.evaluateOpportunity;
+    this.entryLeadMinutes = options.entryLeadMinutes ?? 10;
   }
 
   public start(): void {
@@ -122,6 +128,13 @@ export class TelegramCommander {
         await this.handleStatus();
         break;
 
+      case 'next':
+      case 'planned':
+      case 'plan':
+      case 'target':
+        await this.handleNextPlannedTrade();
+        break;
+
       case 'trades':
       case 'positions':
       case 'pos':
@@ -156,6 +169,7 @@ export class TelegramCommander {
       `🤖 *ARBITRAGE BOT COMMAND MENU*`,
       `━━━━━━━━━━━━━━━━━━━━━━`,
       `• *wallet* (or *bal*) — Live Binance & Bybit balances & max safe trade size`,
+      `• *next* (or *plan*) — 🎯 Details of the next planned trade with countdown & sizing`,
       `• *top5* (or *diff*) — Top 5 highest funding diff coins with APR & direction`,
       `• *status* — System health, circuit breaker state, and today's PnL`,
       `• *trades* (or *pos*) — Currently active arbitrage positions`,
@@ -304,6 +318,121 @@ export class TelegramCommander {
       await this.telegramNotifier.sendAlert('System Status', msg, 'INFO');
     } catch (err: any) {
       await this.telegramNotifier.sendAlert('Status Error', `Failed to query status: ${err?.message}`, 'ERROR');
+    }
+  }
+
+  private async handleNextPlannedTrade(): Promise<void> {
+    try {
+      if (!this.getOpportunitiesSnapshot) {
+        await this.telegramNotifier.sendAlert(
+          'Next Planned Trade',
+          'Market scanner is not currently initialized.',
+          'WARN'
+        );
+        return;
+      }
+
+      const opps = await this.getOpportunitiesSnapshot();
+      if (!opps || opps.length === 0) {
+        await this.telegramNotifier.sendAlert(
+          'Next Planned Trade',
+          '🔍 Currently scanning all 675 perpetuals... No aligned opportunity found yet. Check back in 10s.',
+          'INFO'
+        );
+        return;
+      }
+
+      const topOpp = opps[0];
+      const coin = topOpp.mapping ? topOpp.mapping.normalized_symbol : topOpp.symbol;
+      const bRate = (parseFloat((topOpp.binanceRate || 0).toString()) * 100).toFixed(4);
+      const byRate = (parseFloat((topOpp.bybitRate || 0).toString()) * 100).toFixed(4);
+      const edgePct = parseFloat((topOpp.fundingDiffPct || topOpp.diffPct || 0).toString()).toFixed(4);
+      const bSign = parseFloat(bRate) > 0 ? '+' : '';
+      const bySign = parseFloat(byRate) > 0 ? '+' : '';
+      const apr = (parseFloat(edgePct) * 3 * 365).toFixed(1);
+
+      const now = Date.now();
+      const targetFundingTime = topOpp.targetFundingTimeMs || topOpp.nextFundingTimeMs || 0;
+      const msUntilSettlement = Math.max(0, targetFundingTime - now);
+      const minutesUntilSettlement = Math.floor(msUntilSettlement / 60000);
+      const secondsUntilSettlement = Math.floor((msUntilSettlement % 60000) / 1000);
+
+      const msUntilEntry = Math.max(0, targetFundingTime - this.entryLeadMinutes * 60 * 1000 - now);
+      const minutesUntilEntry = Math.floor(msUntilEntry / 60000);
+      const secondsUntilEntry = Math.floor((msUntilEntry % 60000) / 1000);
+
+      // Deep evaluate if evaluator available
+      let detailedSizing = '';
+      let profitabilityBreakdown = '';
+      let isApprovedStr = '⏳ Waiting for Entry Window';
+
+      if (this.evaluateOpportunity) {
+        try {
+          const evaluated = await this.evaluateOpportunity(topOpp);
+          if (evaluated && evaluated.sizing) {
+            const appliedLev = evaluated.sizing.appliedLeverage;
+            const bNotional = evaluated.sizing.binanceActualNotionalUsd ? evaluated.sizing.binanceActualNotionalUsd.toFixed(2) : '50.00';
+            const byNotional = evaluated.sizing.bybitActualNotionalUsd ? evaluated.sizing.bybitActualNotionalUsd.toFixed(2) : '50.00';
+            const bQty = evaluated.sizing.binanceQuantity ? evaluated.sizing.binanceQuantity.toFixed(4) : '0';
+            const byQty = evaluated.sizing.bybitQuantity ? evaluated.sizing.bybitQuantity.toFixed(4) : '0';
+            const bMargin = (parseFloat(bNotional) / appliedLev).toFixed(2);
+            const byMargin = (parseFloat(byNotional) / appliedLev).toFixed(2);
+
+            const biSide = evaluated.profitability?.direction === 'SHORT_BINANCE_LONG_BYBIT' ? 'SHORT (SELL)' : 'LONG (BUY)';
+            const bySide = evaluated.profitability?.direction === 'SHORT_BINANCE_LONG_BYBIT' ? 'LONG (BUY)' : 'SHORT (SELL)';
+
+            detailedSizing = [
+              `⚖️ *Common Dynamic Leverage:* \`${appliedLev}x\` (Auto-matched)`,
+              `• *Binance Leg:* \`${biSide}\``,
+              `   └ Notional: \`$${bNotional}\` | Qty: \`${bQty}\``,
+              `   └ Required Margin: \`$${bMargin} USDT\``,
+              `• *Bybit Leg:* \`${bySide}\``,
+              `   └ Notional: \`$${byNotional}\` | Qty: \`${byQty}\``,
+              `   └ Required Margin: \`$${byMargin} USDT\``,
+            ].join('\n');
+
+            if (evaluated.profitability) {
+              const expNetProfit = evaluated.profitability.expectedNetProfitUsd ? evaluated.profitability.expectedNetProfitUsd.toFixed(2) : '0.00';
+              profitabilityBreakdown = [
+                `💰 *Projected Profit & Cash Flow:*`,
+                `• *Expected Net Profit:* \`+$${expNetProfit} USDT\``,
+                `• *Binance Funding Cashflow:* \`$${evaluated.profitability.expectedFundingCashFlowBinance?.toFixed(3)}\``,
+                `• *Bybit Funding Cashflow:* \`$${evaluated.profitability.expectedFundingCashFlowBybit?.toFixed(3)}\``,
+              ].join('\n');
+            }
+
+            if (evaluated.isApproved) {
+              isApprovedStr = '✅ *Pre-Approved & Ready To Fire*';
+            } else if (evaluated.rejectionReason) {
+              isApprovedStr = `⚠️ *Filter Pending:* ${evaluated.rejectionReason}`;
+            }
+          }
+        } catch {
+          // fallback if evaluation fails
+        }
+      }
+
+      const msg = [
+        `🎯 *NEXT PLANNED ARBITRAGE TRADE*`,
+        `━━━━━━━━━━━━━━━━━━━━━━`,
+        `🪙 *Target Coin:* \`${coin}\``,
+        `📊 *Funding Difference (Edge):* \`${edgePct}%\` (APR: \`${apr}%\`)`,
+        `   • Binance Rate: \`${bSign}${bRate}%\``,
+        `   • Bybit Rate: \`${bySign}${byRate}%\``,
+        '',
+        `⏰ *Timing & Schedule:*`,
+        `• *Funding Settlement Due In:* \`${minutesUntilSettlement}m ${secondsUntilSettlement}s\``,
+        `• *Auto-Entry Orders Fire In:* \`${minutesUntilEntry}m ${secondsUntilEntry}s\` (${this.entryLeadMinutes}m pre-funding)`,
+        '',
+        detailedSizing ? `${detailedSizing}\n` : '',
+        profitabilityBreakdown ? `${profitabilityBreakdown}\n` : '',
+        `📋 *Status:* ${isApprovedStr}`,
+        `━━━━━━━━━━━━━━━━━━━━━━`,
+      ].join('\n');
+
+      await this.telegramNotifier.sendAlert(`Next Planned Trade: ${coin}`, msg, 'INFO');
+    } catch (err: any) {
+      await this.telegramNotifier.sendAlert('Next Trade Query Error', `Failed to determine next trade: ${err?.message}`, 'ERROR');
     }
   }
 
