@@ -156,6 +156,22 @@ npm run start:live
 
 ---
 
+### 🧪 Test Futures Order Placement (CLI Script)
+Submits a safe minimum order (e.g. ~$5 DOGEUSDT at 3x leverage) on futures and automatically closes it after 3 seconds via reduce-only order.
+
+```bash
+# Test on Binance (default)
+npm run test:order
+
+# Test specifically on Bybit
+npm run test:order bybit
+
+# Test on a specific coin (e.g. SOLUSDT or XRPUSDT)
+npm run test:order bybit SOLUSDT
+```
+
+---
+
 ## 4. Safety, Position Management & Kill Switches
 
 ### 🚨 Emergency Position Flatten (Kill Switch)
@@ -243,6 +259,7 @@ You can send commands directly in your Telegram chat to trigger actions on the r
 | **`top5`** (or `diff`, `rates`) | Scans live market spreads | Returns the Top 5 highest funding rate difference pairs across Binance & Bybit with live rates, spreads, and annualized APR. |
 | **`status`** (or `health`) | Checks system vitals | Displays engine health (`HEALTHY`, `TRIPPED`, `KILL_SWITCH`), active trade count, today's trade count, funding income, fees, and net realized P&L. |
 | **`trades`** (or `pos`) | Audits open trades | Details any currently active arbitrage pair, entry state, leg notionals, and expected net profit. |
+| **`testorder`** (or `test`) | 🧪 Test Futures Order | Places a minimal test market order on futures and immediately auto-closes it after 3s with reduce-only. |
 | **`flatten`** (or `kill`) | 🚨 Emergency Kill Switch | Immediately cancels all orders, executes market reduce-only liquidations on all open positions across both exchanges, and activates the kill switch. |
 | **`help`** (or `menu`) | Help menu | Lists all available interactive Telegram commands. |
 

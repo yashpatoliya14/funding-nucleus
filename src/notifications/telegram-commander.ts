@@ -6,6 +6,7 @@ import { logger } from '../utils/logger.js';
 import { sleep } from '../utils/time.js';
 import { CircuitBreaker } from '../risk/circuit-breaker.js';
 import { KillSwitch } from '../risk/kill-switch.js';
+import { executeTestOrder } from '../execution/test-order-executor.js';
 
 export interface TelegramCommanderOptions {
   botToken: string;
@@ -133,11 +134,17 @@ export class TelegramCommander {
         await this.handleEmergencyFlatten();
         break;
 
+      case 'testorder':
+      case 'test':
+      case 'testtrade':
+        await this.handleTestOrder();
+        break;
+
       default:
         // If unknown command, provide quick options
         await this.telegramNotifier.sendAlert(
           'Command Not Recognized',
-          `Unknown command: \`${text}\`\n\nSend *help* to see available commands:\n• *wallet* - Check wallet balances\n• *top5* - Top 5 funding spreads\n• *status* - System & PnL status\n• *trades* - Open trades\n• *flatten* - Emergency kill-switch`,
+          `Unknown command: \`${text}\`\n\nSend *help* to see available commands:\n• *wallet* - Check wallet balances\n• *top5* - Top 5 funding spreads\n• *status* - System & PnL status\n• *trades* - Open trades\n• *testorder* - Test order on futures\n• *flatten* - Emergency kill-switch`,
           'INFO'
         );
         break;
@@ -152,6 +159,7 @@ export class TelegramCommander {
       `• *top5* (or *diff*) — Top 5 highest funding diff coins with APR & direction`,
       `• *status* — System health, circuit breaker state, and today's PnL`,
       `• *trades* (or *pos*) — Currently active arbitrage positions`,
+      `• *testorder* (or *test*) — 🧪 Places a minimal test order & closes it immediately`,
       `• *flatten* (or *kill*) — 🚨 Emergency kill-switch: closes all open positions`,
       `• *help* — Show this command menu`,
       `━━━━━━━━━━━━━━━━━━━━━━`,
@@ -352,6 +360,47 @@ export class TelegramCommander {
       );
     } catch (err: any) {
       await this.telegramNotifier.sendAlert('Emergency Flatten Error', `Flatten failed: ${err?.message}`, 'ERROR');
+    }
+  }
+
+  private async handleTestOrder(): Promise<void> {
+    try {
+      await this.telegramNotifier.sendAlert(
+        '🧪 TEST ORDER INITIATED',
+        'Submitting minimum test market order with 3s auto-close to verify exchange connectivity...',
+        'INFO'
+      );
+
+      // Execute test order on Bybit (or Binance if available)
+      const res = await executeTestOrder(this.bybitClient, {
+        symbol: 'DOGEUSDT',
+        side: 'BUY',
+        autoClose: true,
+        holdSeconds: 3,
+        leverage: 3,
+      });
+
+      const msg = [
+        `✅ *TEST ORDER COMPLETED*`,
+        `━━━━━━━━━━━━━━━━━━━━━━`,
+        `• *Exchange:* \`${this.bybitClient.exchangeName.toUpperCase()}\``,
+        `• *Symbol:* \`${res.symbol}\``,
+        `• *Filled Qty:* \`${res.qty}\``,
+        `• *Entry Price:* \`$${res.entryPrice}\``,
+        `• *Notional:* \`$${res.notionalUsd} USDT\``,
+        `• *Open Status:* \`${res.openStatus}\``,
+        `• *Auto-Closed Status:* \`${res.closeStatus || 'FILLED'}\``,
+        `━━━━━━━━━━━━━━━━━━━━━━`,
+        `🎉 Exchange futures order placement and reduce-only exit verified successfully!`,
+      ].join('\n');
+
+      await this.telegramNotifier.sendAlert('Test Order Success', msg, 'INFO');
+    } catch (err: any) {
+      await this.telegramNotifier.sendAlert(
+        'Test Order Failed',
+        `Could not execute test order:\n\`${err?.message || err}\``,
+        'ERROR'
+      );
     }
   }
 }

@@ -59,8 +59,9 @@ execution:
   reduce_only_exits: true
 
 risk:
-  # Conservative leverage cap for real capital protection (Max 3x to 5x recommended)
-  default_leverage_cap: 3
+  # Maximum leverage cap. The engine takes min(Binance Max, Bybit Max, leverage_cap).
+  # Set higher (e.g. 25x or 50x) if you want the bot to use the maximum leverage supported by both exchanges.
+  default_leverage_cap: 25
 
   # Dollar exposure per single leg (e.g., $50 on Binance, $50 on Bybit)
   maximum_notional_per_leg_usd: 50.0

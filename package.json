@@ -30,7 +30,8 @@
     "binance:check": "tsx scripts/check-binance-funding.ts",
     "funding:diff": "tsx scripts/check-funding-diff.ts",
     "correlation": "tsx scripts/check-correlation.ts",
-    "telegram:test": "tsx scripts/test-telegram.ts"
+    "telegram:test": "tsx scripts/test-telegram.ts",
+    "test:order": "tsx scripts/test-order.ts"
   },
   "keywords": [
     "crypto",
