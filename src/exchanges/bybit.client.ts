@@ -176,6 +176,7 @@ export class BybitClient implements IExchangeClient {
       symbol: t.symbol,
       fundingRate: toDecimal(t.fundingRate || '0'),
       fundingTimeMs: Number(t.nextFundingTime),
+      fundingIntervalHours: t.fundingIntervalHour ? Number(t.fundingIntervalHour) : 8,
       markPrice: toDecimal(t.markPrice || '0'),
       predictedRate: t.predictedDeliveryPrice ? toDecimal(t.predictedDeliveryPrice) : undefined,
     }));

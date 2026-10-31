@@ -37,10 +37,10 @@ export class OpportunityFilter {
     }
 
     try {
-      // 1. Fetch current order books and commission rates concurrently
+      // 1. Fetch current order books (depth: 50 for robust slippage estimation) and commission rates concurrently
       const [binanceBook, bybitBook, binanceCommission, bybitCommission, binanceBalances, bybitBalances, binanceInsts, bybitInsts] = await Promise.all([
-        this.binanceClient.getOrderBook(opp.mapping.binance_symbol),
-        this.bybitClient.getOrderBook(opp.mapping.bybit_symbol),
+        this.binanceClient.getOrderBook(opp.mapping.binance_symbol, 50),
+        this.bybitClient.getOrderBook(opp.mapping.bybit_symbol, 50),
         this.binanceClient.getCommissionRates(opp.mapping.binance_symbol),
         this.bybitClient.getCommissionRates(opp.mapping.bybit_symbol),
         this.binanceClient.getBalances(),

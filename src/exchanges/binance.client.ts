@@ -182,6 +182,7 @@ export class BinanceClient implements IExchangeClient {
       symbol: item.symbol,
       fundingRate: toDecimal(item.lastFundingRate || '0'),
       fundingTimeMs: Number(item.nextFundingTime),
+      fundingIntervalHours: 8,
       markPrice: toDecimal(item.markPrice || '0'),
       interestRate: toDecimal(item.interestRate || '0'),
     }));

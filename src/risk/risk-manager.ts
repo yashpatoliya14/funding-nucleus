@@ -68,7 +68,17 @@ export class RiskManager {
     const exposure = ExposureManager.calculateExposure(bPos, byPos);
     const candidateNotional = candidate.sizing.binanceActualNotionalUsd.plus(candidate.sizing.bybitActualNotionalUsd);
     const projectedTotalNotional = exposure.totalAggregateNotionalUsd.plus(candidateNotional);
-    const maxAggregate = toDecimal(this.config.risk.maximum_aggregate_notional_usd);
+
+    // If trade_margin_per_leg_usd is set (e.g. $10), aggregate limit scales with leverage (e.g. $10 * 20x * 2 legs * 1.5 buffer)
+    let maxAggregate = toDecimal(this.config.risk.maximum_aggregate_notional_usd);
+    if (this.config.risk.trade_margin_per_leg_usd && this.config.risk.trade_margin_per_leg_usd > 0) {
+      const dynamicLimit = toDecimal(this.config.risk.trade_margin_per_leg_usd)
+        .times(candidate.sizing.appliedLeverage || 20)
+        .times('3.0'); // 3.0x covers both legs plus safety buffer
+      if (dynamicLimit.greaterThan(maxAggregate)) {
+        maxAggregate = dynamicLimit;
+      }
+    }
 
     if (projectedTotalNotional.greaterThan(maxAggregate)) {
       throw new RiskLimitViolationError(

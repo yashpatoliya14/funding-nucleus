@@ -24,6 +24,7 @@ export interface FundingRateInfo {
   symbol: string;
   fundingRate: Decimal; // e.g. 0.0001 = 0.01%
   fundingTimeMs: number;
+  fundingIntervalHours?: number; // e.g. 8 for 8-hour, 4, 2, 1
   markPrice: Decimal;
   predictedRate?: Decimal;
   interestRate?: Decimal;

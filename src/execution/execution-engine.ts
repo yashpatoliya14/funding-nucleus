@@ -211,9 +211,15 @@ export class ExecutionEngine {
       const waitTimeMs = Math.max(0, exitTimeMs - Date.now());
 
       logger.info({ tradeId, waitTimeMs, exitDelaySeconds: this.config.strategy.target_exit_delay_seconds }, 'Waiting for funding settlement');
-      // For testing/paper mode with distant funding, cap wait time if needed, or wait
-      if (waitTimeMs > 0 && waitTimeMs < 10000) {
-        await sleep(waitTimeMs);
+      
+      // In live mode, we MUST sleep until the funding epoch has passed to collect funding!
+      // In simulated/paper mode during tests, cap wait time if funding is far in the future
+      if (waitTimeMs > 0) {
+        if (!isSimulated) {
+          await sleep(waitTimeMs);
+        } else if (waitTimeMs < 10000) {
+          await sleep(waitTimeMs);
+        }
       }
 
       // 7. Transition to FUNDING_RECONCILIATION

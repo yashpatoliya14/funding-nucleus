@@ -55,6 +55,14 @@ export class FundingScanner {
         continue;
       }
 
+      // User strict requirement: Both exchanges MUST have identical funding interval and aligned settlement time!
+      // If Binance is 8h and Bybit is 4h/2h/1h, do not trade.
+      const bInterval = bRate.fundingIntervalHours ?? 8;
+      const byInterval = byRate.fundingIntervalHours ?? 8;
+      if (bInterval !== byInterval) {
+        continue;
+      }
+
       const isAligned = areFundingTimesAligned(bRate.fundingTimeMs, byRate.fundingTimeMs, this.alignmentToleranceSec);
 
       if (this.requireAligned && !isAligned) {
