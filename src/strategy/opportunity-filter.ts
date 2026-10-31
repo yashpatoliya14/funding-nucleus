@@ -81,15 +81,26 @@ export class OpportunityFilter {
       const dynamicBInst = { ...bInst, maxLeverage: bMaxLev };
       const dynamicByInst = { ...byInst, maxLeverage: byMaxLev };
 
-      // Position sizing using the dynamic common leverage min(Binance coin max, Bybit coin max, cap)
-      const targetNotional = toDecimal(this.config.risk.maximum_notional_per_leg_usd);
+      // Common maximum leverage determined dynamically from both exchanges for this specific coin
+      const effectiveLeverage = Math.min(
+        dynamicBInst.maxLeverage,
+        dynamicByInst.maxLeverage,
+        this.config.risk.default_leverage_cap || 100
+      );
+
+      // Sizing is dynamically driven by your desired USDT margin:
+      // Target Notional = Margin (default $10) * Common Maximum Dynamic Leverage
+      const marginPerLeg = toDecimal(this.config.risk.trade_margin_per_leg_usd || 10);
+      const targetNotional = marginPerLeg.times(effectiveLeverage);
+
+      // Position sizing using the dynamic common leverage min(Binance coin max, Bybit coin max)
       const sizing = PositionSizer.calculateSizing(
         targetNotional,
         opp.binanceMarkPrice,
         opp.bybitMarkPrice,
         dynamicBInst,
         dynamicByInst,
-        this.config.risk.default_leverage_cap,
+        this.config.risk.default_leverage_cap || 100,
         this.config.execution.maximum_notional_mismatch_pct
       );
 

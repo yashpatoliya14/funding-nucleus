@@ -68,6 +68,7 @@ export const AppConfigSchema = z.object({
     .object({
       default_leverage_cap: z.number().positive().default(5),
       maximum_notional_per_leg_usd: z.number().positive().default(100),
+      trade_margin_per_leg_usd: z.number().positive().optional(),
       maximum_concurrent_trades: z.number().int().positive().default(1),
       maximum_daily_loss_usd: z.number().positive().default(5),
       maximum_aggregate_notional_usd: z.number().positive().default(200),

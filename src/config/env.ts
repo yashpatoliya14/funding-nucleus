@@ -24,6 +24,18 @@ const EnvSchema = z.object({
       const n = parseInt(v, 10);
       return isNaN(n) ? 3 : Math.min(7, Math.max(1, n));
     }),
+  TRADE_MARGIN_PER_LEG_USD: z
+    .string()
+    .optional()
+    .transform((v) => (v ? parseFloat(v) : undefined)),
+  MAX_NOTIONAL_PER_LEG_USD: z
+    .string()
+    .optional()
+    .transform((v) => (v ? parseFloat(v) : undefined)),
+  LEVERAGE_CAP: z
+    .string()
+    .optional()
+    .transform((v) => (v ? parseFloat(v) : undefined)),
   CONFIG_PATH: z.string().default('./config/config.example.yaml'),
   LOG_LEVEL: z.string().optional(),
 });
@@ -64,6 +76,17 @@ export function loadConfig(customConfigPath?: string): FullConfig {
     appConfig.monitoring.telegram_enabled = true;
     appConfig.monitoring.monitoring_enabled = env.TELEGRAM_MONITORING_ENABLED;
     appConfig.monitoring.duration_days = env.TELEGRAM_MONITORING_DURATION_DAYS;
+  }
+
+  // Risk and sizing overrides from .env
+  if (env.LEVERAGE_CAP && env.LEVERAGE_CAP > 0) {
+    appConfig.risk.default_leverage_cap = env.LEVERAGE_CAP;
+  }
+  if (env.MAX_NOTIONAL_PER_LEG_USD && env.MAX_NOTIONAL_PER_LEG_USD > 0) {
+    appConfig.risk.maximum_notional_per_leg_usd = env.MAX_NOTIONAL_PER_LEG_USD;
+  }
+  if (env.TRADE_MARGIN_PER_LEG_USD && env.TRADE_MARGIN_PER_LEG_USD > 0) {
+    appConfig.risk.trade_margin_per_leg_usd = env.TRADE_MARGIN_PER_LEG_USD;
   }
 
   return { appConfig, env };
