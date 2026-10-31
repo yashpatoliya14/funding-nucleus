@@ -25,13 +25,14 @@ strategy:
   target_exit_delay_seconds: 60
 
   # Minimum required net profit in USD after deducting all maker/taker fees and slippage
-  minimum_net_profit_usd: 0.50
+  # Lowered to 0.05 so smaller $50 notional positions are approved to trade
+  minimum_net_profit_usd: 0.05
 
   # Minimum required funding spread (0.05% = 54.75% Annualized APR)
   minimum_funding_edge_pct: 0.05
 
-  # Additional safety buffer for margin & fee variations
-  risk_buffer_usd: 0.15
+  # Additional safety buffer for margin & fee variations (adjusted to 0.02 for $50 test trades)
+  risk_buffer_usd: 0.02
 
   # CRITICAL INVARIANT: Only trade pairs where Binance & Bybit settle at the identical timestamp
   require_aligned_funding_events: true

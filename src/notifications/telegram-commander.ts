@@ -392,12 +392,26 @@ export class TelegramCommander {
             ].join('\n');
 
             if (evaluated.profitability) {
-              const expNetProfit = evaluated.profitability.expectedNetProfitUsd ? evaluated.profitability.expectedNetProfitUsd.toFixed(2) : '0.00';
+              const netPnlNum = evaluated.profitability.expectedNetProfitUsd ? parseFloat(evaluated.profitability.expectedNetProfitUsd.toString()) : 0;
+              const netPnlSign = netPnlNum >= 0 ? '+' : '';
+              const netPnlStr = `${netPnlSign}$${netPnlNum.toFixed(4)}`;
+
+              const totalFees = evaluated.profitability.estimatedEntryFees
+                ? evaluated.profitability.estimatedEntryFees.plus(evaluated.profitability.estimatedExitFees).toFixed(4)
+                : '0.0000';
+              const totalSlippage = evaluated.profitability.estimatedEntrySlippageUsd
+                ? evaluated.profitability.estimatedEntrySlippageUsd.plus(evaluated.profitability.estimatedExitSlippageUsd).toFixed(4)
+                : '0.0000';
+              const grossFunding = evaluated.profitability.netFundingCashFlow
+                ? evaluated.profitability.netFundingCashFlow.toFixed(4)
+                : '0.0000';
+
               profitabilityBreakdown = [
-                `💰 *Projected Profit & Cash Flow:*`,
-                `• *Expected Net Profit:* \`+$${expNetProfit} USDT\``,
-                `• *Binance Funding Cashflow:* \`$${evaluated.profitability.expectedFundingCashFlowBinance?.toFixed(3)}\``,
-                `• *Bybit Funding Cashflow:* \`$${evaluated.profitability.expectedFundingCashFlowBybit?.toFixed(3)}\``,
+                `💰 *Projected Profit & Cost Breakdown:*`,
+                `• *Gross Funding Cash Flow:* \`+$${grossFunding} USDT\``,
+                `• *Taker Fees (Entry + Exit):* \`-$${totalFees} USDT\``,
+                `• *Est. Slippage Cost:* \`-$${totalSlippage} USDT\``,
+                `• *Expected NET Profit:* \`${netPnlStr} USDT\``,
               ].join('\n');
             }
 
