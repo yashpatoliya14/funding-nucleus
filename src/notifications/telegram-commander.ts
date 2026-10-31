@@ -354,12 +354,18 @@ export class TelegramCommander {
       const now = Date.now();
       const targetFundingTime = topOpp.targetFundingTimeMs || topOpp.nextFundingTimeMs || 0;
       const msUntilSettlement = Math.max(0, targetFundingTime - now);
-      const minutesUntilSettlement = Math.floor(msUntilSettlement / 60000);
-      const secondsUntilSettlement = Math.floor((msUntilSettlement % 60000) / 1000);
+      const totalSecSettlement = Math.floor(msUntilSettlement / 1000);
+      const hoursSettlement = Math.floor(totalSecSettlement / 3600);
+      const minSettlement = Math.floor((totalSecSettlement % 3600) / 60);
+      const secSettlement = totalSecSettlement % 60;
+      const settlementStr = hoursSettlement > 0 ? `${hoursSettlement}h ${minSettlement}m ${secSettlement}s` : `${minSettlement}m ${secSettlement}s`;
 
       const msUntilEntry = Math.max(0, targetFundingTime - this.entryLeadMinutes * 60 * 1000 - now);
-      const minutesUntilEntry = Math.floor(msUntilEntry / 60000);
-      const secondsUntilEntry = Math.floor((msUntilEntry % 60000) / 1000);
+      const totalSecEntry = Math.floor(msUntilEntry / 1000);
+      const hoursEntry = Math.floor(totalSecEntry / 3600);
+      const minEntry = Math.floor((totalSecEntry % 3600) / 60);
+      const secEntry = totalSecEntry % 60;
+      const entryStr = hoursEntry > 0 ? `${hoursEntry}h ${minEntry}m ${secEntry}s` : `${minEntry}m ${secEntry}s`;
 
       // Deep evaluate if evaluator available
       let detailedSizing = '';
@@ -435,8 +441,8 @@ export class TelegramCommander {
         `   • Bybit Rate: \`${bySign}${byRate}%\``,
         '',
         `⏰ *Timing & Schedule:*`,
-        `• *Funding Settlement Due In:* \`${minutesUntilSettlement}m ${secondsUntilSettlement}s\``,
-        `• *Auto-Entry Orders Fire In:* \`${minutesUntilEntry}m ${secondsUntilEntry}s\` (${this.entryLeadMinutes}m pre-funding)`,
+        `• *Funding Settlement Due In:* \`${settlementStr}\``,
+        `• *Auto-Entry Orders Fire In:* \`${entryStr}\` (${this.entryLeadMinutes}m pre-funding)`,
         '',
         detailedSizing ? `${detailedSizing}\n` : '',
         profitabilityBreakdown ? `${profitabilityBreakdown}\n` : '',
