@@ -28,8 +28,8 @@ strategy:
   # Lowered to 0.05 so smaller $50 notional positions are approved to trade
   minimum_net_profit_usd: 0.05
 
-  # Minimum required funding spread (0.05% = 54.75% Annualized APR)
-  minimum_funding_edge_pct: 0.05
+  # Minimum required funding spread: 0.15% (164.25% Annualized APR) to guarantee pure profit after all fees
+  minimum_funding_edge_pct: 0.15
 
   # Additional safety buffer for margin & fee variations (adjusted to 0.02 for $50 test trades)
   risk_buffer_usd: 0.02
