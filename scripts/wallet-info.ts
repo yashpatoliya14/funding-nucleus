@@ -57,6 +57,7 @@ async function main() {
   let bybitUsdt = 0;
   try {
     const balances = await bybit.getBalances();
+    console.log(`      (Bybit raw assets found: ${balances.map(b => `${b.asset}: $${b.walletBalance}`).join(', ') || 'None'})`);
     const usdt = balances.find((b) => b.asset === 'USDT');
     const usdc = balances.find((b) => b.asset === 'USDC');
 

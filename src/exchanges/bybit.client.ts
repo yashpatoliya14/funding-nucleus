@@ -205,54 +205,13 @@ export class BybitClient implements IExchangeClient {
   }
 
   async getBalances(): Promise<AccountBalance[]> {
-    // 1. Try UNIFIED account first
-    let resList: any[] = [];
-    try {
-      const data = await this.requestApi<{ list: any[] }>('GET', '/v5/account/wallet-balance', {
-        accountType: 'UNIFIED',
-      }, true);
-      resList = data.list || [];
-    } catch {
-      // ignore
-    }
-
-    // 2. If UNIFIED returns no coins or user has standard/classic derivatives account, query CONTRACT
-    if (resList.length === 0 || !resList.some(item => (item.coin || []).length > 0)) {
-      try {
-        const contractData = await this.requestApi<{ list: any[] }>('GET', '/v5/account/wallet-balance', {
-          accountType: 'CONTRACT',
-        }, true);
-        if (contractData.list && contractData.list.length > 0) {
-          resList = contractData.list;
-        }
-      } catch {
-        // ignore
-      }
-    }
-
-    // 3. Fallback check for SPOT / FUND if still empty
-    if (resList.length === 0 || !resList.some(item => (item.coin || []).length > 0)) {
-      try {
-        const spotData = await this.requestApi<{ list: any[] }>('GET', '/v5/account/wallet-balance', {
-          accountType: 'FUND',
-        }, true);
-        if (spotData.list && spotData.list.length > 0) {
-          resList = spotData.list;
-        }
-      } catch {
-        // ignore
-      }
-    }
+    const data = await this.requestApi<{ list: any[] }>('GET', '/v5/account/wallet-balance', {
+      accountType: 'UNIFIED',
+    }, true);
 
     const balances: AccountBalance[] = [];
-    for (const item of resList) {
+    for (const item of data.list || []) {
       for (const coin of item.coin || []) {
-        // In Bybit Unified account:
-        // coin.walletBalance = balance in wallet
-        // coin.availableToWithdraw = withdrawable
-        // coin.availableToBorrow = borrowable
-        // coin.equity = total equity
-        // For trading margin, coin.walletBalance or coin.equity is the true balance
         const wBal = coin.walletBalance && coin.walletBalance !== '' ? coin.walletBalance : '0';
         const eq = coin.equity && coin.equity !== '' ? coin.equity : wBal;
         const avail = coin.availableToWithdraw && coin.availableToWithdraw !== '' && coin.availableToWithdraw !== '0'
