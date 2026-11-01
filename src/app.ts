@@ -184,6 +184,9 @@ export class FundingArbitrageApp {
           return this.opportunityFilter.evaluateOpportunity(opp);
         },
         entryLeadMinutes: config.appConfig.strategy.entry_lead_minutes,
+        marginPerLegUsd: parseFloat(process.env.TRADE_MARGIN_PER_LEG_USD || '10') || 10,
+        defaultLeverageCap: config.appConfig.risk.default_leverage_cap || 25,
+        minFundingEdgePct: config.appConfig.strategy.minimum_funding_edge_pct || 0.15,
       });
     }
 

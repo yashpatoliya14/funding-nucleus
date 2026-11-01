@@ -21,6 +21,9 @@ export interface TelegramCommanderOptions {
   getOpportunitiesSnapshot?: () => Promise<any[]>;
   evaluateOpportunity?: (opp: any) => Promise<any>;
   entryLeadMinutes?: number;
+  marginPerLegUsd?: number;
+  defaultLeverageCap?: number;
+  minFundingEdgePct?: number;
 }
 
 export class TelegramCommander {
@@ -36,8 +39,13 @@ export class TelegramCommander {
   private getOpportunitiesSnapshot?: () => Promise<any[]>;
   private evaluateOpportunity?: (opp: any) => Promise<any>;
   private entryLeadMinutes: number = 10;
+  private marginPerLegUsd: number = 10;
+  private defaultLeverageCap: number = 25;
+  private minFundingEdgePct: number = 0.15;
   private isPolling: boolean = false;
   private lastUpdateId: number = 0;
+  private processedUpdateIds: Set<number> = new Set();
+  private isProcessingCommand: boolean = false;
 
   constructor(options: TelegramCommanderOptions) {
     this.botToken = options.botToken;
@@ -52,19 +60,45 @@ export class TelegramCommander {
     this.getOpportunitiesSnapshot = options.getOpportunitiesSnapshot;
     this.evaluateOpportunity = options.evaluateOpportunity;
     this.entryLeadMinutes = options.entryLeadMinutes ?? 10;
+    this.marginPerLegUsd = options.marginPerLegUsd ?? 10;
+    this.defaultLeverageCap = options.defaultLeverageCap ?? 25;
+    this.minFundingEdgePct = options.minFundingEdgePct ?? 0.15;
   }
 
   public start(): void {
     if (this.isPolling) return;
     this.isPolling = true;
     logger.info({ chatId: this.chatId }, 'Telegram interactive command listener started');
-    this.pollLoop().catch((err) => {
+    this.initAndPoll().catch((err) => {
       logger.error({ err: err?.message }, 'Telegram command polling encountered unexpected fatal error');
     });
   }
 
   public stop(): void {
     this.isPolling = false;
+  }
+
+  private async initAndPoll(): Promise<void> {
+    await this.initializeOffset();
+    await this.pollLoop();
+  }
+
+  private async initializeOffset(): Promise<void> {
+    try {
+      const url = `https://api.telegram.org/bot${this.botToken}/getUpdates?offset=-1&limit=1`;
+      const res = await request(url, { method: 'GET' });
+      if (res.statusCode === 200) {
+        const body: any = await res.body.json();
+        if (body.ok && Array.isArray(body.result) && body.result.length > 0) {
+          const latest = body.result[body.result.length - 1];
+          this.lastUpdateId = latest.update_id;
+          this.processedUpdateIds.add(latest.update_id);
+          logger.info({ lastUpdateId: this.lastUpdateId }, 'Flushed previous Telegram updates on startup');
+        }
+      }
+    } catch {
+      // Non-fatal
+    }
   }
 
   private async pollLoop(): Promise<void> {
@@ -76,7 +110,18 @@ export class TelegramCommander {
           const body: any = await res.body.json();
           if (body.ok && Array.isArray(body.result)) {
             for (const update of body.result) {
+              if (this.processedUpdateIds.has(update.update_id)) {
+                this.lastUpdateId = Math.max(this.lastUpdateId, update.update_id);
+                continue;
+              }
+              this.processedUpdateIds.add(update.update_id);
               this.lastUpdateId = Math.max(this.lastUpdateId, update.update_id);
+
+              if (this.processedUpdateIds.size > 2000) {
+                const arr = Array.from(this.processedUpdateIds);
+                this.processedUpdateIds = new Set(arr.slice(arr.length - 1000));
+              }
+
               if (update.message && update.message.text) {
                 const senderChatId = String(update.message.chat?.id || '');
                 // Authorization check: Only respond to authorized chat ID
@@ -97,70 +142,75 @@ export class TelegramCommander {
   }
 
   private async handleMessage(text: string): Promise<void> {
-    const rawCmd = text.toLowerCase().replace('/', '').trim();
+    const rawCmd = (text.toLowerCase().replace('/', '').split('@')[0] || '').trim();
     logger.info({ rawCmd }, 'Received Telegram command from authorized user');
 
-    switch (rawCmd) {
-      case 'help':
-      case 'commands':
-      case 'start':
-      case 'menu':
-        await this.handleHelp();
-        break;
+    this.isProcessingCommand = true;
+    try {
+      switch (rawCmd) {
+        case 'help':
+        case 'commands':
+        case 'start':
+        case 'menu':
+          await this.handleHelp();
+          break;
 
-      case 'wallet':
-      case 'balance':
-      case 'balances':
-        await this.handleWallet();
-        break;
+        case 'wallet':
+        case 'balance':
+        case 'balances':
+          await this.handleWallet();
+          break;
 
-      case 'top':
-      case 'top5':
-      case 'diff':
-      case 'rates':
-      case 'funding':
-        await this.handleTop5();
-        break;
+        case 'top':
+        case 'top5':
+        case 'diff':
+        case 'rates':
+        case 'funding':
+          await this.handleTop5();
+          break;
 
-      case 'status':
-      case 'info':
-      case 'health':
-        await this.handleStatus();
-        break;
+        case 'status':
+        case 'info':
+        case 'health':
+          await this.handleStatus();
+          break;
 
-      case 'next':
-      case 'planned':
-      case 'plan':
-      case 'target':
-        await this.handleNextPlannedTrade();
-        break;
+        case 'next':
+        case 'planned':
+        case 'plan':
+        case 'target':
+          await this.handleNextPlannedTrade();
+          break;
 
-      case 'trades':
-      case 'positions':
-      case 'pos':
-        await this.handleTrades();
-        break;
+        case 'trades':
+        case 'positions':
+        case 'pos':
+          await this.handleTrades();
+          break;
 
-      case 'flatten':
-      case 'kill':
-      case 'emergency':
-        await this.handleEmergencyFlatten();
-        break;
+        case 'flatten':
+        case 'kill':
+        case 'emergency':
+          await this.handleEmergencyFlatten();
+          break;
 
-      case 'testorder':
-      case 'test':
-      case 'testtrade':
-        await this.handleDualTestOrder();
-        break;
+        case 'testorder':
+        case 'test':
+        case 'testtrade':
+          await this.handleDualTestOrder();
+          break;
 
-      default:
-        // If unknown command, provide quick options
-        await this.telegramNotifier.sendAlert(
-          'Command Not Recognized',
-          `Unknown command: \`${text}\`\n\nSend *help* to see available commands:\n• *wallet* - Check wallet balances\n• *top5* - Top 5 funding spreads\n• *status* - System & PnL status\n• *trades* - Open trades\n• *testorder* - Test order on futures\n• *flatten* - Emergency kill-switch`,
-          'INFO'
-        );
-        break;
+        default:
+          // If unknown command, provide quick options
+          await this.telegramNotifier.sendAlert(
+            'Command Not Recognized',
+            `Unknown command: \`${text}\`\n\nSend *help* to see available commands:\n• *wallet* - Check wallet balances\n• *next* - Next scheduled arbitrage trade\n• *top5* - Top 5 funding spreads\n• *status* - System & PnL status\n• *trades* - Open trades\n• *test* - Test connection orders\n• *flatten* - Emergency kill-switch`,
+            'INFO'
+          );
+          break;
+      }
+    } finally {
+      this.isProcessingCommand = false;
     }
   }
 
@@ -201,7 +251,8 @@ export class TelegramCommander {
         biMargin = usdt ? parseFloat(usdt.marginBalance.toString()) : 0;
         biTotal = usdt ? parseFloat(usdt.walletBalance.toString()) : 0;
       } else {
-        biStatus = '❌ Error (Check API Permissions)';
+        const reason = binanceBalances.reason?.message || 'Check API Permissions';
+        biStatus = `❌ Error: ${reason}`;
       }
 
       let byUsdt = 0;
@@ -215,12 +266,17 @@ export class TelegramCommander {
         byMargin = usdt ? parseFloat(usdt.marginBalance.toString()) : 0;
         byTotal = usdt ? parseFloat(usdt.walletBalance.toString()) : 0;
       } else {
-        byStatus = '❌ Error (Check API Credentials)';
+        const reason = bybitBalances.reason?.message || 'Check API Credentials';
+        byStatus = `❌ Error: ${reason}`;
       }
 
       const bottleneck = Math.min(biUsdt, byUsdt);
-      const safe3x = (bottleneck * 3).toFixed(2);
-      const safe5x = (bottleneck * 5).toFixed(2);
+      const margin = this.marginPerLegUsd;
+      const lev = this.defaultLeverageCap;
+      const targetNotional = margin * lev;
+      const targetTotalNotional = targetNotional * 2;
+      const totalMarginNeeded = margin * 2;
+      const maxAffordableNotional = Math.floor(bottleneck * lev);
 
       const msg = [
         `💼 *EXCHANGE WALLET AUDIT*`,
@@ -236,9 +292,11 @@ export class TelegramCommander {
         `   • Total: \`$${byTotal.toFixed(2)} USDT\``,
         '',
         `⚖️ *Capital Bottleneck:* \`$${bottleneck.toFixed(2)} USDT\``,
-        `🚀 *Max Safe Trade Size (Per Leg):*`,
-        `   • At 3x Leverage: \`$${safe3x}\``,
-        `   • At 5x Leverage: \`$${safe5x}\``,
+        `⚙️ *Configured Sizing (Config & .env):*`,
+        `   • Trade Margin Per Leg: \`$${margin.toFixed(2)} USDT\` ($${totalMarginNeeded.toFixed(2)} total)`,
+        `   • Max Leverage Cap: \`${lev}x\``,
+        `   • Target Trade Notional: \`$${targetNotional.toFixed(2)}\` per leg ($${targetTotalNotional.toFixed(2)} total)`,
+        `🚀 *Max Safe Notional at ${lev}x:* \`$${maxAffordableNotional.toFixed(2)} USDT\` per leg`,
         `━━━━━━━━━━━━━━━━━━━━━━`,
       ].join('\n');
 
@@ -424,11 +482,13 @@ export class TelegramCommander {
             if (evaluated.isApproved) {
               isApprovedStr = '✅ *Pre-Approved & Ready To Fire*';
             } else if (evaluated.rejectionReason) {
-              isApprovedStr = `⚠️ *Filter Pending:* ${evaluated.rejectionReason}`;
+              isApprovedStr = `⚠️ *Filter Status:* ${evaluated.rejectionReason}`;
             }
+          } else if (evaluated && evaluated.rejectionReason) {
+            isApprovedStr = `⚠️ *Filter Status:* ${evaluated.rejectionReason}`;
           }
-        } catch {
-          // fallback if evaluation fails
+        } catch (evalErr: any) {
+          isApprovedStr = `⚠️ *Evaluation Error:* ${evalErr?.message || evalErr}`;
         }
       }
 
