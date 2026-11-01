@@ -415,11 +415,19 @@ export class FundingArbitrageApp {
               const estSlippage = evaluated.profitability.estimatedEntrySlippageUsd.plus(evaluated.profitability.estimatedExitSlippageUsd).toFixed(3);
 
               const alertText = [
-                `🚨 *PRE-TRADE EXECUTION ALERT: ${coin}* 🚨`,
+                `⚡ *TRADE EXECUTION SIGNAL: ALL VALIDATIONS PASSED* ⚡`,
                 `━━━━━━━━━━━━━━━━━━━━━━`,
                 `🎯 *Selected Pair:* \`${coin}\` (Binance & Bybit)`,
                 `🔄 *Strategy Direction:* \`${direction}\``,
-                `⚖️ *Common Safe Leverage:* \`${appliedLeverage}x\` (Unified across both exchanges)`,
+                `⚖️ *Leverage:* \`${appliedLeverage}x\` (Unified across exchanges)`,
+                '',
+                `✅ *Pre-Trade Validations Passed:*`,
+                `• Aligned Settlement Epoch: \`Identical Minute\``,
+                `• Dynamic Leverage Cap: \`${appliedLeverage}x\` approved`,
+                `• Binance Margin: Required \`$${biMargin} USDT\` verified`,
+                `• Bybit Margin: Required \`$${byMargin} USDT\` verified`,
+                `• Net Profit Invariant: \`+$${netProfitUsd} USDT\` (Costs covered)`,
+                `• Circuit Breaker & Kill Switch: \`Normal / Active\``,
                 '',
                 `📊 *Detailed Leg Breakdown:*`,
                 `• *Binance:* \`${biAction}\``,
@@ -441,14 +449,15 @@ export class FundingArbitrageApp {
                 `📋 *Top 5 Funding Spreads At Time of Entry:*`,
                 top5Lines.join('\n'),
                 `━━━━━━━━━━━━━━━━━━━━━━`,
-                `🚀 *Orders are being submitted concurrently to both exchanges...*`
+                `🚀 *Orders submitted concurrently. Will exit immediately after settlement.*`
               ].join('\n');
 
-              await this.telegram.sendAlert(
-                `⚡ Arbitrage Entry: ${coin} (${direction})`,
-                alertText,
-                'INFO'
-              );
+              await this.telegram.sendMessage(alertText);
+
+
+
+
+
 
               // Execute trade lifecycle
               const isSimulated = this.config.appConfig.app.mode === 'paper';
