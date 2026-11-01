@@ -16,6 +16,10 @@ export interface MarginStatus {
   reason?: string;
 }
 
+function normalizeSymbol(symbol: string): string {
+  return symbol.toUpperCase().replace(/^1000000|^100000|^10000|^1000/, '').replace(/USDT$|USDC$/, '');
+}
+
 export class MarginMonitor {
   private lastAlertTimestamp: number = 0;
 
@@ -42,6 +46,9 @@ export class MarginMonitor {
       if (binanceBalances.status === 'fulfilled') {
         const usdt = binanceBalances.value.find((b) => b.asset === 'USDT');
         biAvail = usdt ? parseFloat(usdt.availableBalance.toString()) : 0;
+        if (usdt && usdt.unrealizedPnl) {
+          biUnPnl += parseFloat(usdt.unrealizedPnl.toString());
+        }
       }
       if (binancePositions.status === 'fulfilled') {
         for (const p of binancePositions.value) {
@@ -56,6 +63,9 @@ export class MarginMonitor {
       if (bybitBalances.status === 'fulfilled') {
         const usdt = bybitBalances.value.find((b) => b.asset === 'USDT');
         byAvail = usdt ? parseFloat(usdt.availableBalance.toString()) : 0;
+        if (usdt && usdt.unrealizedPnl) {
+          byUnPnl += parseFloat(usdt.unrealizedPnl.toString());
+        }
       }
       if (bybitPositions.status === 'fulfilled') {
         for (const p of bybitPositions.value) {
@@ -69,8 +79,11 @@ export class MarginMonitor {
       const isByLow = byAvail < this.warningThresholdUsd;
       const isCritical = biAvail < this.criticalThresholdUsd || byAvail < this.criticalThresholdUsd;
 
-      // Only trigger if an active imbalance exists (one side has open positions or adverse pnl)
-      if ((isBiLow || isByLow) && (Math.abs(biUnPnl) > 0.05 || Math.abs(byUnPnl) > 0.05 || biAvail !== byAvail)) {
+      // Imbalance check: one exchange has low margin (< $3.50), AND there is meaningful divergence (P&L drift or >= $2 balance spread)
+      const hasPnlDrift = Math.abs(biUnPnl) >= 0.20 || Math.abs(byUnPnl) >= 0.20;
+      const hasBalanceSkew = Math.abs(biAvail - byAvail) >= 2.00;
+
+      if ((isBiLow || isByLow) && (hasPnlDrift || hasBalanceSkew)) {
         const losingExchange = biAvail < byAvail ? 'Binance' : 'Bybit';
         const winningExchange = losingExchange === 'Binance' ? 'Bybit' : 'Binance';
         const lowerBal = Math.min(biAvail, byAvail);
@@ -166,7 +179,10 @@ export class MarginMonitor {
 
       // Check if Binance has orphan positions where Bybit has zero (e.g. Bybit was liquidated)
       for (const bPos of activeBi) {
-        const match = activeBy.find((by) => by.symbol.toUpperCase() === bPos.symbol.toUpperCase());
+        const bNorm = normalizeSymbol(bPos.symbol);
+        const match = activeBy.find(
+          (by) => normalizeSymbol(by.symbol) === bNorm || by.symbol.toUpperCase() === bPos.symbol.toUpperCase()
+        );
         if (!match || match.quantity.isZero() || match.side === 'FLAT') {
           logger.error(
             { symbol: bPos.symbol, side: bPos.side, qty: bPos.quantity.toString() },
@@ -208,7 +224,10 @@ export class MarginMonitor {
 
       // Check if Bybit has orphan positions where Binance has zero (e.g. Binance was liquidated)
       for (const byPos of activeBy) {
-        const match = activeBi.find((bi) => bi.symbol.toUpperCase() === byPos.symbol.toUpperCase());
+        const byNorm = normalizeSymbol(byPos.symbol);
+        const match = activeBi.find(
+          (bi) => normalizeSymbol(bi.symbol) === byNorm || bi.symbol.toUpperCase() === byPos.symbol.toUpperCase()
+        );
         if (!match || match.quantity.isZero() || match.side === 'FLAT') {
           logger.error(
             { symbol: byPos.symbol, side: byPos.side, qty: byPos.quantity.toString() },
