@@ -29,7 +29,7 @@ strategy:
   minimum_net_profit_usd: 0.05
 
   # Minimum required funding spread: 0.15% (164.25% Annualized APR) to guarantee pure profit after all fees
-  minimum_funding_edge_pct: 0.15
+  minimum_funding_edge_pct: 0.10
 
   # Cumulative carry holding: hold across cycles to collect multi-cycle funding and avoid repeat exit & entry fees
   cumulative_carry_enabled: true
