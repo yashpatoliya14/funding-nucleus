@@ -228,15 +228,18 @@ export class TelegramCommander {
 
   private async handleWallet(): Promise<void> {
     try {
-      const [binanceBalances, bybitBalances] = await Promise.allSettled([
+      const [binanceBalances, bybitBalances, bComm, byComm] = await Promise.allSettled([
         this.binanceClient.getBalances(),
         this.bybitClient.getBalances(),
+        this.binanceClient.getCommissionRates('ETHUSDT'),
+        this.bybitClient.getCommissionRates('ETHUSDT'),
       ]);
 
       let biAvail = '$0.00';
       let biMargin = '$0.00';
       let biTotal = '$0.00';
       let biStatus = 'Connected';
+      let biFeeStr = 'Maker 0.020% | Taker 0.050%';
 
       if (binanceBalances.status === 'fulfilled') {
         const usdt = binanceBalances.value.find((b) => b.asset === 'USDT');
@@ -249,10 +252,17 @@ export class TelegramCommander {
         biStatus = `Error (${binanceBalances.reason?.message || 'Check API'})`;
       }
 
+      if (bComm.status === 'fulfilled') {
+        const m = (parseFloat(bComm.value.makerRate.toString()) * 100).toFixed(3);
+        const t = (parseFloat(bComm.value.takerRate.toString()) * 100).toFixed(3);
+        biFeeStr = `Maker ${m}% | Taker ${t}%`;
+      }
+
       let byAvail = '$0.00';
       let byMargin = '$0.00';
       let byTotal = '$0.00';
       let byStatus = 'Connected';
+      let byFeeStr = 'Maker 0.020% | Taker 0.055%';
 
       if (bybitBalances.status === 'fulfilled') {
         const usdt = bybitBalances.value.find((b) => b.asset === 'USDT');
@@ -263,6 +273,12 @@ export class TelegramCommander {
         }
       } else {
         byStatus = `Error (${bybitBalances.reason?.message || 'Check API'})`;
+      }
+
+      if (byComm.status === 'fulfilled') {
+        const m = (parseFloat(byComm.value.makerRate.toString()) * 100).toFixed(3);
+        const t = (parseFloat(byComm.value.takerRate.toString()) * 100).toFixed(3);
+        byFeeStr = `Maker ${m}% | Taker ${t}%`;
       }
 
       const numBi = parseFloat(biAvail.replace('$', '')) || 0;
@@ -279,11 +295,13 @@ export class TelegramCommander {
         `• Available: \`${biAvail} USDT\``,
         `• Margin: \`${biMargin} USDT\``,
         `• Total: \`${biTotal} USDT\``,
+        `• Fees: \`${biFeeStr}\``,
         ``,
         `⚫ *Bybit Unified* (${byStatus})`,
         `• Available: \`${byAvail} USDT\``,
         `• Margin: \`${byMargin} USDT\``,
         `• Total: \`${byTotal} USDT\``,
+        `• Fees: \`${byFeeStr}\``,
         ``,
         `⚖️ *Limiting Trading Margin:* \`$${limiting.toFixed(2)} USDT\``,
         `⚙️ *Config:* \`$${margin.toFixed(2)}\` margin/leg @ \`${lev}x\` = \`$${targetNotional.toFixed(2)}\` notional/leg`,
@@ -429,8 +447,8 @@ export class TelegramCommander {
 
             sizingText = [
               `• *Sizing (${appliedLev}x Leverage):*`,
-              `  - Binance: ${biSide} \`${bQty} ${coin}\` (~$${bNotional} | $${bMargin} margin)`,
-              `  - Bybit: ${bySide} \`${byQty} ${coin}\` (~$${byNotional} | $${byMargin} margin)`,
+              `  - Binance: ${biSide} \`${bQty} ${coin}\` (~$${bNotional} | $${bMargin} margin | 0.050% taker fee)`,
+              `  - Bybit: ${bySide} \`${byQty} ${coin}\` (~$${byNotional} | $${byMargin} margin | 0.055% taker fee)`,
             ].join('\n');
 
             if (evaluated.profitability && evaluated.profitability.expectedNetProfitUsd) {
@@ -457,7 +475,7 @@ export class TelegramCommander {
               profitText = [
                 `• *Profit & Cost Breakdown:*`,
                 `  - Gross Funding: \`+$${grossFunding} USDT\``,
-                `  - Trading Fees Takes: \`-$${totalFees} USDT\` (Entry + Exit taker fees)`,
+                `  - Trading Fees Takes: \`-$${totalFees} USDT\` (Binance: 0.050% | Bybit: 0.055% | Roundtrip: 0.210%)`,
                 `  - Slippage Cost Takes: \`-$${totalSlippage} USDT\` (Orderbook execution spread)`,
                 `  - Expected Net Profit: \`${netProfitStr} USDT\``,
               ].join('\n');
