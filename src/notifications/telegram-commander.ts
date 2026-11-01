@@ -150,7 +150,7 @@ export class TelegramCommander {
       case 'testorder':
       case 'test':
       case 'testtrade':
-        await this.handleTestOrder();
+        await this.handleDualTestOrder();
         break;
 
       default:
@@ -173,7 +173,7 @@ export class TelegramCommander {
       `• *top5* (or *diff*) — Top 5 highest funding diff coins with APR & direction`,
       `• *status* — System health, circuit breaker state, and today's PnL`,
       `• *trades* (or *pos*) — Currently active arbitrage positions`,
-      `• *testorder* (or *test*) — 🧪 Places a minimal test order & closes it immediately`,
+      `• *test* — 🧪 Place connection check orders for minimum lot of Ethereum (ETH) on both Binance & Bybit`,
       `• *flatten* (or *kill*) — 🚨 Emergency kill-switch: closes all open positions`,
       `• *help* — Show this command menu`,
       `━━━━━━━━━━━━━━━━━━━━━━`,
@@ -512,42 +512,77 @@ export class TelegramCommander {
     }
   }
 
-  private async handleTestOrder(): Promise<void> {
+  private async handleDualTestOrder(): Promise<void> {
+    const symbol = 'ETHUSDT';
     try {
       await this.telegramNotifier.sendAlert(
-        '🧪 TEST ORDER INITIATED',
-        'Submitting minimum test market order with 3s auto-close to verify exchange connectivity...',
+        '🧪 CONNECTION TEST INITIATED',
+        `Submitting minimum lot market BUY order for *${symbol}* simultaneously on *Binance* and *Bybit* with 3s auto-close...`,
         'INFO'
       );
 
-      // Execute test order on Bybit (or Binance if available)
-      const res = await executeTestOrder(this.bybitClient, {
-        symbol: 'DOGEUSDT',
-        side: 'BUY',
-        autoClose: true,
-        holdSeconds: 3,
-        leverage: 3,
-      });
+      // Execute on both Binance and Bybit concurrently
+      const [binanceRes, bybitRes] = await Promise.allSettled([
+        executeTestOrder(this.binanceClient, {
+          symbol,
+          side: 'BUY',
+          autoClose: true,
+          holdSeconds: 3,
+          leverage: 3,
+        }),
+        executeTestOrder(this.bybitClient, {
+          symbol,
+          side: 'BUY',
+          autoClose: true,
+          holdSeconds: 3,
+          leverage: 3,
+        }),
+      ]);
 
-      const msg = [
-        `✅ *TEST ORDER COMPLETED*`,
-        `━━━━━━━━━━━━━━━━━━━━━━`,
-        `• *Exchange:* \`${this.bybitClient.exchangeName.toUpperCase()}\``,
-        `• *Symbol:* \`${res.symbol}\``,
-        `• *Filled Qty:* \`${res.qty}\``,
-        `• *Entry Price:* \`$${res.entryPrice}\``,
-        `• *Notional:* \`$${res.notionalUsd} USDT\``,
-        `• *Open Status:* \`${res.openStatus}\``,
-        `• *Auto-Closed Status:* \`${res.closeStatus || 'FILLED'}\``,
-        `━━━━━━━━━━━━━━━━━━━━━━`,
-        `🎉 Exchange futures order placement and reduce-only exit verified successfully!`,
-      ].join('\n');
+      const isBinanceOk = binanceRes.status === 'fulfilled' && binanceRes.value.success;
+      const isBybitOk = bybitRes.status === 'fulfilled' && bybitRes.value.success;
 
-      await this.telegramNotifier.sendAlert('Test Order Success', msg, 'INFO');
+      if (isBinanceOk && isBybitOk) {
+        const b = (binanceRes as PromiseFulfilledResult<any>).value;
+        const by = (bybitRes as PromiseFulfilledResult<any>).value;
+
+        const msg = [
+          `🎉 *DUAL CONNECTION TEST SUCCESSFUL!*`,
+          `━━━━━━━━━━━━━━━━━━━━━━`,
+          `🟡 *Binance Futures (ETH):*`,
+          `   • Qty: \`${b.qty} ETH\` (~$${b.notionalUsd})`,
+          `   • Entry Price: \`$${b.entryPrice}\``,
+          `   • Open Status: \`${b.openStatus}\` | Closed: \`${b.closeStatus || 'FILLED'}\``,
+          '',
+          `⚫ *Bybit Unified (ETH):*`,
+          `   • Qty: \`${by.qty} ETH\` (~$${by.notionalUsd})`,
+          `   • Entry Price: \`$${by.entryPrice}\``,
+          `   • Open Status: \`${by.openStatus}\` | Closed: \`${by.closeStatus || 'FILLED'}\``,
+          `━━━━━━━━━━━━━━━━━━━━━━`,
+          `✅ Both exchange APIs and orders executed and auto-closed successfully!`,
+        ].join('\n');
+
+        await this.telegramNotifier.sendAlert('Connection Test: PASSED', msg, 'INFO');
+      } else {
+        // One or both failed
+        const bErr = binanceRes.status === 'rejected' ? (binanceRes.reason?.message || binanceRes.reason) : (binanceRes.value.error || 'OK');
+        const byErr = bybitRes.status === 'rejected' ? (bybitRes.reason?.message || bybitRes.reason) : (bybitRes.value.error || 'OK');
+
+        const errMsg = [
+          `🚨 *CONNECTION TEST FAILED!*`,
+          `━━━━━━━━━━━━━━━━━━━━━━`,
+          `🟡 *Binance:* ${isBinanceOk ? '✅ Success' : `❌ Failed: \`${bErr}\``}`,
+          `⚫ *Bybit:* ${isBybitOk ? '✅ Success' : `❌ Failed: \`${byErr}\``}`,
+          `━━━━━━━━━━━━━━━━━━━━━━`,
+          `⚠️ Please check API permissions (Enable Futures) and available USDT balance!`,
+        ].join('\n');
+
+        await this.telegramNotifier.sendAlert('Connection Test: FAILED', errMsg, 'ERROR');
+      }
     } catch (err: any) {
       await this.telegramNotifier.sendAlert(
-        'Test Order Failed',
-        `Could not execute test order:\n\`${err?.message || err}\``,
+        'Connection Test Error',
+        `Unexpected error during test execution:\n\`${err?.message || err}\``,
         'ERROR'
       );
     }

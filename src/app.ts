@@ -354,16 +354,10 @@ export class FundingArbitrageApp {
         // 2. Scan funding rates
         const opportunities = await this.scanner.scanOpportunities(activeSymbols);
 
-        // Check if startup report has been sent, or 4 hours elapsed since last report
-        const nowMs = Date.now();
-        const FOUR_HOURS_MS = 4 * 60 * 60 * 1000;
+        // Send startup report on first scan after restart (periodic 4h messages disabled as requested)
         if (this.lastPeriodicReportTime === 0) {
-          // Send on first full market scan after startup/restart
-          this.lastPeriodicReportTime = nowMs;
+          this.lastPeriodicReportTime = Date.now();
           await this.sendMarketAndPnLReport('STARTUP', opportunities);
-        } else if (nowMs - this.lastPeriodicReportTime >= FOUR_HOURS_MS) {
-          this.lastPeriodicReportTime = nowMs;
-          await this.sendMarketAndPnLReport('PERIODIC_4H', opportunities);
         }
 
         if (opportunities.length > 0) {
