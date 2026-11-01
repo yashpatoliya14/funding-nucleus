@@ -1,33 +1,33 @@
 # Cross-Exchange Funding Arbitrage: Strategy & System Architecture
 
-This document provides a simple, end-to-end explanation of the **Delta-Neutral Funding Arbitrage Strategy** and the autonomous trading engine built to execute it across **Binance Futures** and **Bybit Unified Perpetuals**.
+This document provides a clear, comprehensive explanation of the **Single-Cycle Delta-Neutral Funding Arbitrage Strategy** and the autonomous trading engine built to execute it across **Binance Futures** and **Bybit Unified Perpetuals**.
 
 ---
 
 ## 1. What is Funding Arbitrage in Simple Terms?
 
-In perpetual futures markets, exchanges do not have an expiration date. To keep the perpetual contract price pegged to the spot index price, exchanges enforce a **Funding Rate** payment between buyers (Longs) and sellers (Shorts) every 8 hours (00:00, 08:00, 16:00 UTC).
+In perpetual futures markets, contracts do not expire. To keep the perpetual contract trading price pegged to the underlying spot index price, exchanges enforce periodic **Funding Rate** payments between buyers (Longs) and sellers (Shorts):
 
 * When the funding rate is **positive** ($+$): **Longs pay Shorts**.
 * When the funding rate is **negative** ($-$) : **Shorts pay Longs**.
 
-Because Binance and Bybit operate with separate order books, market sentiment and funding rates frequently **diverge**:
-* **Binance**: $+0.25\%$
-* **Bybit**: $+0.02\%$
-* **Funding Edge (Difference)**: $+0.23\%$ per 8 hours (**$251.85\%$ Annualized APR**)
+Because Binance and Bybit operate independent order books with different user bases and liquidity profiles, funding rates frequently **diverge**:
+* **Binance**: $+0.45\%$
+* **Bybit**: $+0.05\%$
+* **Funding Edge (Spread)**: $+0.40\%$ for this settlement epoch
 
 ---
 
 ## 2. How the Bot Makes Profit Without Market Risk (Delta-Neutral)
 
-To collect this funding spread without taking any price direction risk, the bot opens two equal and opposite positions at the exact same moment:
+To collect this funding spread without taking any directional price risk, the bot opens two equal and opposite positions at the exact same moment:
 
 ```
 ┌────────────────────────────────────────────────────────┐
 │                   THE ARBITRAGE TRADE                  │
 │                                                        │
-│   Binance (+0.25% Rate):   SHORT $100 Notional of Coin │
-│   Bybit   (+0.02% Rate):   LONG  $100 Notional of Coin │
+│   Binance (+0.45% Rate):   SHORT $100 Notional of Coin │
+│   Bybit   (+0.05% Rate):   LONG  $100 Notional of Coin │
 └───────────────────────────┬────────────────────────────┘
                             │
                Market Price Moves Up 10%
@@ -36,159 +36,179 @@ To collect this funding spread without taking any price direction risk, the bot 
 │ • Binance Short PnL:  -$10.00                          │
 │ • Bybit Long PnL:     +$10.00                          │
 │ ──────────────────────────────                         │
-│   Net Price PnL:        $0.00  (Perfect Delta Neutral) │
+│   Net Price PnL:        $0.00  (Delta-Neutral)         │
 └───────────────────────────┬────────────────────────────┘
                             │
-            Funding Settlement Epoch (8 Hours)
+             Funding Settlement Epoch (00:00 / 08:00 / 16:00 UTC)
                             │
 ┌───────────────────────────┴────────────────────────────┐
-│ • Binance Short receives funding:  +$0.25              │
-│ • Bybit Long pays funding:         -$0.02              │
+│ • Binance Short receives funding:  +$0.45              │
+│ • Bybit Long pays funding:         -$0.05              │
 │ ──────────────────────────────────────────             │
-│   Net Funding Cashflow:            +$0.23              │
-│   Taker Entry + Exit Fees:        -$0.10               │
+│   Gross Funding Cashflow:          +$0.40              │
+│   Roundtrip Taker Fees (4 fills):  -$0.21              │
+│   Roundtrip Slippage:              -$0.03              │
 │ ──────────────────────────────────────────             │
-│   GUARANTEED NET PROFIT:           +$0.13              │
+│   GUARANTEED NET PROFIT:           +$0.16              │
 └────────────────────────────────────────────────────────┘
 ```
 
-**Regardless of whether the crypto market pumps or dumps, the net price change is zero.** The bot simply collects the net funding cash flow at settlement!
+**Regardless of whether the crypto market pumps 50% or dumps 50%, the net price change across both accounts is zero.** The bot isolates and pockets the net funding cash flow.
 
 ---
 
-## 3. The Cumulative Carry Model (Multi-Cycle Compounding)
+## 3. Single-Cycle Lifecycle & Fee Economics
 
-Previously, arbitrage bots entered 10 minutes before funding and immediately closed 5 seconds after settlement.
+In the single-cycle model, the bot enters right before funding settlement, collects the funding fee at the exact settlement second, and exits immediately.
 
-### The Problem with Single-Cycle Exits:
-Roundtrip exchange taker fees take approximately **$0.210\%$** ($0.050\%$ Binance entry + $0.055\%$ Bybit entry + $0.050\%$ Binance exit + $0.055\%$ Bybit exit). Exiting after only one 8-hour cycle means paying this heavy fee friction on every single settlement.
+### Fee Friction & The Net Profit Invariant
+Opening and closing both legs involves 4 market order fills:
+1. **Binance Entry**: $0.050\%$ taker fee
+2. **Bybit Entry**: $0.055\%$ taker fee
+3. **Binance Exit**: $0.050\%$ taker fee
+4. **Bybit Exit**: $0.055\%$ taker fee
+* **Total Taker Fees**: $\approx 0.210\%$
+* **Estimated Slippage**: $\approx 0.030\%$
+* **Total Friction Drag**: $\approx 0.240\%$ of notional
 
-### The Cumulative Carry Solution:
-Instead of exiting immediately, the engine queries the next funding rates right after settlement:
-1. If the next 8-hour funding spread in the same direction remains **$\ge 0.05\%$** (`carry_min_retention_edge_pct`), the bot **retains both positions** instead of closing!
-2. Entry and exit fees are **paid only once**.
-3. Funding payments continue compounding across cycle 2, cycle 3, and cycle 4 (up to 48 hours).
-4. When the spread drops below $0.05\%$ or inverts, the bot cleanly closes positions via reduce-only market orders and locks in all cumulative funding.
+### The Strict Opportunity Filter:
+* If gross funding spread is $\le 0.240\%$, total costs exceed gross funding $\rightarrow$ **Trade is Rejected**.
+* If gross funding spread is $> 0.240\%$ (e.g. $0.50\%$, $1.00\%$, $1.57\%$) $\rightarrow$ Net profit is strictly positive $\rightarrow$ **Trade is Approved**.
+
+Because the bot strictly enforces `expectedNetProfitUsd > 0`, it **never executes a trade that loses money to fees**.
 
 ---
 
-## 4. End-to-End Algorithm Lifecycle (Step-by-Step)
+## 4. How Exchange Timing (8h vs 4h) is Matched
+
+Different coins or exchanges may settle funding on 8-hour, 4-hour, or 2-hour cycles. The bot ensures precise synchronization in `src/market-data/funding-scanner.ts`:
+
+1. **Next Funding Time Query**: The bot queries both Binance and Bybit for the exact millisecond timestamp of the next funding settlement (`nextFundingTime`).
+2. **Interval Calculation**: It verifies the interval duration (e.g. 8h vs 4h).
+3. **Alignment Verification**:
+   ```typescript
+   export function areFundingTimesAligned(
+     binanceFundingTimeMs: number,
+     bybitFundingTimeMs: number,
+     toleranceMs: number = 60_000
+   ): boolean {
+     return Math.abs(binanceFundingTimeMs - bybitFundingTimeMs) <= toleranceMs;
+   }
+   ```
+4. If Binance settles at 08:00 UTC and Bybit settles at 08:00 UTC, the discrepancy is `0` $\rightarrow$ **Aligned**.
+5. If Bybit has a 4h coin settling at 04:00 UTC while Binance settles at 08:00 UTC, the difference is 4 hours $\rightarrow$ **Discarded immediately** to prevent unhedged funding exposure.
+
+---
+
+## 5. End-to-End Algorithm Lifecycle (Step-by-Step)
 
 ```mermaid
 flowchart TD
     A["1. Symbol Matcher & Cache"] --> B["2. Real-Time Funding Scanner"]
-    B --> C{"Is Opportunity in Entry Window?\n(T-10m to T-1m)"}
-    C -- "No" --> B
-    C -- "Yes" --> D["3. Sizing & Dynamic Leverage Engine"]
-    D --> E["4. Profitability Engine (Fees + Slippage)"]
+    B --> C{"Next Settlement in Entry Window?\n(T-10m to T-1m)"}
+    C -- "No: Wait" --> B
+    C -- "Yes" --> D["3. Sizing & Dynamic Leverage Calculator"]
+    D --> E["4. Profitability Engine (Live Orderbook Slippage & Fees)"]
     E --> F{"Expected Net Profit > 0?"}
     F -- "No: Reject" --> B
-    F -- "Yes: Approved" --> G["5. Concurrent Entry Market Orders"]
-    G --> H["6. Hedge Reconciliation"]
-    H --> I["7. Holding Phase (5s Liquidation Guardian)"]
-    I --> J["8. Funding Settlement & Cash Collection"]
-    J --> K{"Is Next Cycle Spread >= 0.05%?"}
-    K -- "Yes" --> I
-    K -- "No / Critical Margin" --> L["9. Concurrent Reduce-Only Exit Orders"]
-    L --> M["10. Flat Verification & SQLite PnL Accounting"]
+    F -- "Yes: Approved" --> G["5. Send Pre-Trade Validation Alert"]
+    G --> H["6. Concurrent Entry Market Orders"]
+    H --> I["7. Hedge Reconciliation & Position Verification"]
+    I --> J["8. Send Trade Entered & Hedged Alert"]
+    J --> K["9. Holding Phase (5s Liquidation Guardian)"]
+    K --> L["10. Funding Settlement Reached & T+5s Exit Orders"]
+    L --> M["11. Flat Verification & Realized PnL Accounting"]
+    M --> N["12. Send Trade Completed & Closed Alert"]
 ```
 
-### Phase 1: Symbol Matching & Caching
-* **Files**: `src/market-data/symbol-matcher.ts`, `src/market-data/symbol-cache.ts`
-* Queries all active perpetual contracts on Binance and Bybit. Matches coins with identical base assets (e.g. `BTC`, `ETH`, `SOL`, `BONK`), ensures matching quote currencies (`USDT`), and verifies identical contract multipliers. Caches specifications in SQLite for 24 hours.
+---
 
-### Phase 2: High-Speed Funding Rate Scanner
-* **Files**: `src/market-data/funding-scanner.ts`, `src/scheduler/funding-scheduler.ts`
-* Scans funding rates and upcoming settlement timestamps across all matched pairs.
-* Filters out pairs with misaligned intervals (e.g. if one is 8h and the other is 4h).
-* Sorts opportunities descending by funding spread edge.
+## 6. Streamlined Telegram Messaging System
 
-### Phase 3: Sizing & Dynamic Leverage Calculator
-* **Files**: `src/strategy/position-sizing.ts`, `src/strategy/opportunity-filter.ts`
-* Sizing is driven by your configured margin (`TRADE_MARGIN_PER_LEG_USD=10`).
-* Dynamically fetches the maximum safe leverage cap for the specific coin on both exchanges (`min(BinanceMax, BybitMax, default_leverage_cap)`).
-* Rounds order quantities strictly to each exchange's `quantityStep` and checks `minNotional`.
+All noisy background spam and routine periodic reports have been removed. Telegram messaging is strictly divided into two distinct categories:
 
-### Phase 4: Profitability Engine & Cost Deductions
-* **Files**: `src/strategy/profitability-engine.ts`, `src/market-data/orderbook-manager.ts`
-* Walks live L2 order books (50 levels deep) to simulate order fills and calculate exact execution slippage.
-* Applies your exact account fee schedule:
-  * **Binance**: Maker `0.020%`, Taker `0.050%`
-  * **Bybit**: Maker `0.020%`, Taker `0.055%`
-* **Strict Safety Invariant**: If `expectedNetProfitUsd <= 0`, the trade is **rejected immediately**.
+### A. The 3 Automated Trade Lifecycle Alerts
+These are sent automatically by the bot as trades execute:
 
-### Phase 5: Concurrent Market Order Execution
-* **Files**: `src/execution/execution-engine.ts`, `src/execution/order-manager.ts`
-* Synchronizes leverage on both exchanges.
-* Submits `MARKET` entry orders simultaneously via `Promise.allSettled` to minimize execution delay.
+#### 1️⃣ Alert 1: Pre-Trade Validation Signal (Before Entry, T-10m)
+```text
+⚡ TRADE EXECUTION SIGNAL: ALL VALIDATIONS PASSED ⚡
+━━━━━━━━━━━━━━━━━━━━━━
+🎯 Selected Pair: POWRUSDT (Binance & Bybit)
+🔄 Strategy Direction: SHORT Binance | LONG Bybit
+⚖️ Leverage: 10x (Unified across exchanges)
 
-### Phase 6: Live Reconciliation & One-Leg Recovery
-* **Files**: `src/execution/reconciliation.ts`, `src/execution/hedge-recovery.ts`
-* Immediately queries position risk on both exchanges.
-* If one leg fails or rejects: invokes `HedgeRecovery.flattenAllLegs()` within milliseconds, executing a reduce-only market close on the filled leg to ensure no unhedged exposure ever persists.
+✅ Pre-Trade Validations Passed:
+• Aligned Settlement Epoch: Identical Minute
+• Dynamic Leverage Cap: 10x approved
+• Binance Margin: Required $10.00 USDT verified
+• Bybit Margin: Required $10.00 USDT verified
+• Net Profit Invariant: +$1.33 USDT (Costs covered)
+• Circuit Breaker & Kill Switch: Normal / Active
 
-### Phase 7: Real-Time Safety Monitors While Holding
-* **Files**: `src/risk/margin-monitor.ts`, `src/execution/execution-engine.ts`
-* **5-Second Liquidation Auto-Exit**: While waiting for settlement, the engine checks position integrity every 5 seconds. If one leg is liquidated or closed by the exchange, it instantly market-closes the surviving leg and sends an emergency Telegram alert.
-* **Margin Rebalance Alerts**: If one exchange suffers an unrealized loss while the other exchange gains profit, and available margin drops below `$3.50`, the bot alerts Telegram with the exact USDT transfer amount to prevent liquidation.
+📊 Detailed Leg Breakdown:
+• Binance: SHORT 1,500 POWR (~$100.00 notional)
+• Bybit: LONG 1,500 POWR (~$100.00 notional)
+• Margin Per Leg: $10.00 USDT
+• Total Position Notional: ~$100.00 USDT
 
-### Phase 8: Settlement Reconciliation & Exit
-* **Files**: `src/execution/execution-engine.ts`, `src/persistence/repositories.ts`
-* Queries actual funding transaction history from Binance and Bybit REST endpoints to record realized cash flows.
-* If subsequent cycle spread is favorable ($\ge 0.05\%$), extends carry hold.
-* If ending: places reduce-only market close orders on both legs, sleeps 200ms, and verifies both accounts are strictly flat ($0$ open positions).
-* Records realized PnL, fees paid, and net profit into SQLite database.
+💰 Spread & Cash Flow Forecast:
+• Gross Funding Spread: 1.5700%
+• Expected Funding Payout: +$1.57 USDT
+• Est. Total Taker Fees: -$0.21 USDT
+• Est. Slippage Friction: -$0.03 USDT
+• Net Projected Profit: +$1.33 USDT
+━━━━━━━━━━━━━━━━━━━━━━
+🚀 Orders submitted concurrently. Will exit immediately after settlement.
+```
+
+#### 2️⃣ Alert 2: Trade Entered & Hedged (When Trade is Taken)
+```text
+🟢 TRADE ENTERED & FULLY HEDGED 🟢
+━━━━━━━━━━━━━━━━━━━━━━
+🎯 Pair: POWRUSDT (Binance & Bybit)
+⚖️ Leverage: 10x | Margin/Leg: $10.00 USDT
+💼 Position Notional: ~$100.00 USDT
+
+📥 Live Fills Confirmed:
+• Binance: SHORT (SELL) @ $0.0667 (Qty: 1500)
+• Bybit: LONG (BUY) @ $0.0668 (Qty: 1500)
+
+⏳ Status: Delta-neutral active. Waiting for settlement at 2026-11-01 20:00:00 UTC
+🛡️ Active Guardians: 5-second liquidation guard & margin drift monitor
+━━━━━━━━━━━━━━━━━━━━━━
+Both legs locked. Will auto-close positions right after settlement.
+```
+
+#### 3️⃣ Alert 3: Trade Completed & Positions Closed (When Trade Exits)
+```text
+🏁 TRADE COMPLETED & POSITIONS CLOSED 🏁
+━━━━━━━━━━━━━━━━━━━━━━
+🎯 Pair: POWRUSDT
+🛡️ Position Status: 100% FLAT (Zero Open Exposure)
+
+💰 Realized Cash Flow & Net Profit:
+• Gross Funding Collected: +$1.5700 USDT
+• Total Exchange Fees Paid: -$0.2100 USDT
+• 🟢 Net Realized Profit: +$1.3600 USDT
+
+✅ Both accounts verified flat. Margin returned to free balance.
+━━━━━━━━━━━━━━━━━━━━━━
+Bot resumed scanning for the next funding opportunity.
+```
 
 ---
 
-## 5. Directory Map: What Each File Does
+### B. Interactive Telegram User Commands
 
-| File | Purpose |
+You can send any of the following text messages to the Telegram bot at any time (no leading slash required):
+
+| Message / Command | What It Does |
 | :--- | :--- |
-| **`src/app.ts`** | Master coordinator. Acquires OS lock, initializes database, runs symbol cache, starts Telegram listener, and executes main scanning loop. |
-| **`src/main.ts`** | Process entry point. Catches unhandled exceptions and registers graceful shutdown hooks (`SIGINT`, `SIGTERM`). |
-| **`src/config/schema.ts`** | Zod validation schema defining configuration types, default risk limits, and fee assumptions. |
-| **`src/config/env.ts`** | Loads environment variables (`.env`) and merges with `config/config.live.yaml`. |
-| **`src/exchanges/binance.client.ts`** | Binance Futures REST adapter: HMAC SHA-256 signing, Dual-side/One-way position mode detection, market orders, fee queries, and rate-limiting. |
-| **`src/exchanges/bybit.client.ts`** | Bybit V5 Unified Trading REST adapter: linear perpetual endpoints, wallet balances, market orders, and fee queries. |
-| **`src/exchanges/paper.client.ts`** | In-memory exchange simulator providing realistic simulated order fills and funding cycles for risk-free automated testing. |
-| **`src/market-data/symbol-matcher.ts`** | Matches cross-exchange perpetuals by base asset and validates compatible multipliers. |
-| **`src/market-data/symbol-cache.ts`** | SQLite-backed cache for matched symbol pairs with 24-hour expiration. |
-| **`src/market-data/funding-scanner.ts`** | Real-time scanner fetching funding rates and calculating spreads and directions. |
-| **`src/market-data/orderbook-manager.ts`** | Walks L2 depth to compute VWAP execution price and realistic slippage in basis points. |
-| **`src/strategy/funding-calculator.ts`** | Pure math engine computing gross funding cash flows and required trade direction. |
-| **`src/strategy/position-sizing.ts`** | Sizing engine converting target USD notional into lot-step rounded quantities. |
-| **`src/strategy/profitability-engine.ts`** | Net profit evaluator deducting taker fees, slippage, and safety risk buffers. |
-| **`src/strategy/opportunity-filter.ts`** | Candidate evaluation pipeline checking balance availability, dynamic leverage, and net profitability. |
-| **`src/risk/margin-monitor.ts`** | Cross-exchange margin monitor. Detects asymmetric PnL drift, sends rebalance alerts, and auto-flattens orphan positions. |
-| **`src/risk/circuit-breaker.ts`** | Prevents runaway losses by tripping if consecutive trades fail or daily loss limits are breached. |
-| **`src/risk/kill-switch.ts`** | Emergency kill switch. Cancels open orders and flattens all open positions across both exchanges. |
-| **`src/execution/state-machine.ts`** | Strict, transactional trade state machine ensuring every trade follows audited state transitions. |
-| **`src/execution/order-manager.ts`** | Pre-persists order intents in SQLite before placing MARKET orders to prevent ghost fills. |
-| **`src/execution/reconciliation.ts`** | Compares Binance and Bybit filled quantities, detects Hedge Mode positions, and checks residual exposure mismatch. |
-| **`src/execution/hedge-recovery.ts`** | Autonomous recovery routine that flattens open exposure if one leg fails. |
-| **`src/execution/execution-engine.ts`** | Manages trade execution, 5-second liquidation monitoring, multi-cycle carry holding, and close orders. |
-| **`src/notifications/telegram.ts`** | Direct markdown notification sender. |
-| **`src/notifications/telegram-commander.ts`** | Interactive command listener responding to `next`, `wallet`, `top5`, `status`, `test`, and `flatten`. |
-| **`src/persistence/database.ts`** | SQLite connection manager with WAL mode for concurrent reads/writes. |
-| **`src/persistence/repositories.ts`** | Data access layer for trades, orders, fills, funding events, snapshots, and daily summary statistics. |
-
----
-
-## 6. Interactive Telegram Commands
-
-The bot features a Telegram command interface:
-
-* **`next`**: Displays the plan for the upcoming funding settlement, complete with line-by-line cost breakdowns:
-  * Gross funding cash flow
-  * Binance taker fee ($0.050\%$)
-  * Bybit taker fee ($0.055\%$)
-  * Estimated slippage
-  * Expected net profit
-  * Approval status (rejects if net profit is negative)
-* **`wallet`**: Live balance check on both Binance and Bybit, unrealized PnL, active position count, and live fee tiers.
-* **`top5`**: Displays the top 5 funding rate discrepancies across all perpetual contracts.
-* **`status`**: Shows system uptime, kill switch status, circuit breaker health, and today's realized PnL.
-* **`test`**: Places and closes a safe test order ($3.00 notional on ETH) to verify API keys and network connectivity.
-* **`flatten`**: Instant emergency button. Closes all open positions on both exchanges and halts trading.
-
+| **`next`** | Displays the planned trade for the upcoming settlement: candidate symbol, required margin per leg, dynamic leverage, taker fee deduction breakdown, and net profit forecast. |
+| **`wallet`** | Live balance query displaying available USDT, margin balance, total wallet balance, open position count, and active maker/taker fee tiers on Binance and Bybit. |
+| **`top5`** | Live ranking of the top 5 highest cross-exchange funding spreads across all perpetual contracts, including annualized APR and time to settlement. |
+| **`status`** | System health status, uptime, kill switch & circuit breaker state, and today's total realized PnL. |
+| **`help`** | Displays the complete interactive command guide and explains all automated alerts. |
+| **`test`** | Places and immediately closes a small safe test order ($3.00 notional) to test API keys and connectivity. |
+| **`flatten`** | 🚨 **Emergency Panic Button**: Instantly market-closes all open positions across Binance and Bybit to 100% USDT cash. |
