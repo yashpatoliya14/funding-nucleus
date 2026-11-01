@@ -36,6 +36,9 @@ export const AppConfigSchema = z.object({
       minimum_funding_edge_pct: z.number().nonnegative().default(0.05),
       risk_buffer_usd: z.number().nonnegative().default(0.10),
       require_aligned_funding_events: z.boolean().default(true),
+      cumulative_carry_enabled: z.boolean().default(true),
+      carry_min_retention_edge_pct: z.number().nonnegative().default(0.05),
+      margin_rebalance_warning_usd: z.number().nonnegative().default(3.50),
     })
     .default({
       entry_lead_minutes: 10,
@@ -44,6 +47,9 @@ export const AppConfigSchema = z.object({
       minimum_funding_edge_pct: 0.05,
       risk_buffer_usd: 0.10,
       require_aligned_funding_events: true,
+      cumulative_carry_enabled: true,
+      carry_min_retention_edge_pct: 0.05,
+      margin_rebalance_warning_usd: 3.50,
     }),
   execution: z
     .object({
