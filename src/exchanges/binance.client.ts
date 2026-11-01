@@ -32,6 +32,7 @@ export class BinanceClient implements IExchangeClient {
   private readonly rateLimiter: RateLimiter;
   private timeOffsetMs: number = 0;
   private hasSyncedTime: boolean = false;
+  private isDualSidePosition: boolean | null = null; // Hedge Mode vs One-Way Mode
 
   constructor(options: BinanceClientOptions) {
     initializeDns();
@@ -252,10 +253,23 @@ export class BinanceClient implements IExchangeClient {
     };
   }
 
+  async syncPositionSideMode(): Promise<boolean> {
+    if (this.isDualSidePosition !== null) return this.isDualSidePosition;
+    try {
+      const res = await this.requestApi<{ dualSidePosition: boolean }>('GET', '/fapi/v1/positionSide/dual', {}, true);
+      this.isDualSidePosition = Boolean(res.dualSidePosition);
+    } catch {
+      this.isDualSidePosition = false; // default One-Way mode
+    }
+    return this.isDualSidePosition;
+  }
+
   async placeMarketOrder(order: OrderRequest): Promise<OrderResult> {
     if (order.orderType !== 'MARKET') {
       throw new Error(`Enforcement violation: Order type must be MARKET, received: ${order.orderType}`);
     }
+
+    const isHedgeMode = await this.syncPositionSideMode();
 
     const params: Record<string, any> = {
       symbol: order.symbol,
@@ -265,8 +279,23 @@ export class BinanceClient implements IExchangeClient {
       newClientOrderId: order.clientOrderId,
     };
 
-    if (order.reduceOnly) {
-      params['reduceOnly'] = 'true';
+    if (isHedgeMode) {
+      // In Hedge Mode (dualSidePosition: true):
+      // - Opening LONG or Closing LONG -> positionSide: 'LONG'
+      // - Opening SHORT or Closing SHORT -> positionSide: 'SHORT'
+      if (order.reduceOnly) {
+        // Closing an existing position: BUY closes SHORT, SELL closes LONG
+        params['positionSide'] = order.side === 'BUY' ? 'SHORT' : 'LONG';
+      } else {
+        // Opening a new position: BUY opens LONG, SELL opens SHORT
+        params['positionSide'] = order.side === 'BUY' ? 'LONG' : 'SHORT';
+      }
+    } else {
+      // In One-Way Mode (dualSidePosition: false):
+      params['positionSide'] = 'BOTH';
+      if (order.reduceOnly) {
+        params['reduceOnly'] = 'true';
+      }
     }
 
     try {
