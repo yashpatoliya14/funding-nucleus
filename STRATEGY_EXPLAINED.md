@@ -191,3 +191,4 @@ The bot features a Telegram command interface:
 * **`status`**: Shows system uptime, kill switch status, circuit breaker health, and today's realized PnL.
 * **`test`**: Places and closes a safe test order ($3.00 notional on ETH) to verify API keys and network connectivity.
 * **`flatten`**: Instant emergency button. Closes all open positions on both exchanges and halts trading.
+
