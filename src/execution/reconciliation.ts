@@ -19,8 +19,12 @@ export class ExecutionReconciliation {
       this.bybitClient.getPositions(bybitSymbol),
     ]);
 
-    const bPos = bPositions.find((p) => p.symbol === binanceSymbol);
-    const byPos = byPositions.find((p) => p.symbol === bybitSymbol);
+    const bPos =
+      bPositions.find((p) => p.symbol === binanceSymbol && !p.quantity.isZero() && p.side !== 'FLAT') ||
+      bPositions.find((p) => p.symbol === binanceSymbol);
+    const byPos =
+      byPositions.find((p) => p.symbol === bybitSymbol && !p.quantity.isZero() && p.side !== 'FLAT') ||
+      byPositions.find((p) => p.symbol === bybitSymbol);
 
     const bQty = bPos ? bPos.quantity : toDecimal('0');
     const byQty = byPos ? byPos.quantity : toDecimal('0');
