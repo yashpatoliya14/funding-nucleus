@@ -324,23 +324,16 @@ export class FundingArbitrageApp {
     const isLive = this.config.appConfig.app.mode === 'live';
     const modeEmoji = isLive ? '🟢' : '🟡';
 
+    const marginVal = process.env.TRADE_MARGIN_PER_LEG_USD || '10';
     const startupMessage = [
-      `${modeEmoji} *Mode:* \`${modeStr}\``,
-      `🔄 *Matched Pairs:* \`${activeSymbols.length}\` perpetuals`,
-      `⚙️ *Max Leg Size:* \`$${this.config.appConfig.risk.maximum_notional_per_leg_usd}\``,
-      `🛡️ *Leverage Cap:* \`${this.config.appConfig.risk.default_leverage_cap}x\``,
-      `🛑 *Daily Loss Stop:* \`$${this.config.appConfig.risk.maximum_daily_loss_usd}\``,
-      `⏱️ *Entry Window:* \`${this.config.appConfig.strategy.entry_lead_minutes}m\` pre-funding`,
-      `📦 *Database:* \`HEALTHY (WAL mode)\``,
-      `🚀 *Status:* Trading engine running and scanning...`,
+      `🤖 *Arbitrage Bot Online* (\`${modeStr}\`)`,
+      `• Pairs: \`${activeSymbols.length}\` perpetuals`,
+      `• Margin: \`$${marginVal} USDT\` @ \`${this.config.appConfig.risk.default_leverage_cap}x\``,
+      `• Min Spread Edge: \`${this.config.appConfig.strategy.minimum_funding_edge_pct}%\``,
+      `• Commands: \`next\`, \`wallet\`, \`top5\``,
     ].join('\n');
 
-    await this.telegram.notifyEvent(
-      'BOT_STARTED',
-      `Arbitrage Engine Online [${modeStr}]`,
-      startupMessage,
-      'INFO'
-    );
+    await this.telegram.sendMessage(startupMessage);
 
     // Main Scanning & Trading Loop
     while (this.isRunning) {

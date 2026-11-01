@@ -33,6 +33,12 @@ export class ExecutionEngine {
   ) {}
 
   async executeTrade(candidate: EvaluatedOpportunity, isSimulated: boolean = true): Promise<DbTrade> {
+    if (!candidate.isApproved || candidate.profitability.expectedNetProfitUsd.lessThanOrEqualTo(0)) {
+      throw new Error(
+        `Safety Invariant Violation: Trade aborted because expected net profit ($${candidate.profitability?.expectedNetProfitUsd?.toString()}) is negative or zero.`
+      );
+    }
+
     const tradeId = randomUUID();
     const coin = candidate.opportunity.mapping.normalized_symbol;
     const bSymbol = candidate.opportunity.mapping.binance_symbol;

@@ -149,13 +149,15 @@ export class OpportunityFilter {
         toDecimal(this.config.strategy.minimum_net_profit_usd)
       );
 
-      if (!profitability.isProfitable) {
+      if (!profitability.isProfitable || profitability.expectedNetProfitUsd.lessThanOrEqualTo(0)) {
         return {
           opportunity: opp,
           sizing,
           profitability,
           isApproved: false,
-          rejectionReason: profitability.rejectionReason,
+          rejectionReason: profitability.expectedNetProfitUsd.lessThanOrEqualTo(0)
+            ? `Expected net profit ($${profitability.expectedNetProfitUsd.toFixed(4)}) is negative or zero`
+            : (profitability.rejectionReason || 'Profit below threshold'),
         };
       }
 

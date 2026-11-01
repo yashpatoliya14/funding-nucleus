@@ -216,22 +216,19 @@ export class TelegramNotifier {
     await this.sendAlert('Daily Operational Summary', text, 'INFO');
   }
 
-  async sendAlert(title: string, message: string, severity: 'INFO' | 'WARN' | 'ERROR' = 'INFO'): Promise<void> {
+  async sendMessage(text: string): Promise<void> {
     if (!this.enabled && !this.isTestingMode) {
       return;
     }
 
     if (this.isTestingMode && this.mockSender) {
-      await this.mockSender(title, message);
+      await this.mockSender('', text);
       return;
     }
 
     if (!this.botToken || !this.chatId) {
       return;
     }
-
-    const emoji = severity === 'ERROR' ? '🚨' : severity === 'WARN' ? '⚠️' : 'ℹ️';
-    const text = `${emoji} *${title}*\n\n${message}\n\n_Time: ${new Date().toISOString()}_`;
 
     // Retry with bounded backoff (max 3 attempts). NEVER crash the trading engine!
     for (let attempt = 1; attempt <= 3; attempt++) {
@@ -255,13 +252,26 @@ export class TelegramNotifier {
         logger.warn({ attempt, statusCode: res.statusCode, errText }, 'Telegram API returned non-200');
         await sleep(500 * Math.pow(2, attempt));
       } catch (err: any) {
-        logger.warn({ attempt, err: err?.message }, 'Transient error sending Telegram alert');
-        if (attempt === 3) {
-          logger.error({ title }, 'Could not deliver Telegram notification after 3 attempts');
-        } else {
+        logger.warn({ attempt, err: err?.message }, 'Transient error sending Telegram message');
+        if (attempt < 3) {
           await sleep(500 * Math.pow(2, attempt));
         }
       }
     }
+  }
+
+  async sendAlert(title: string, message: string, severity: 'INFO' | 'WARN' | 'ERROR' = 'INFO'): Promise<void> {
+    if (!this.enabled && !this.isTestingMode) {
+      return;
+    }
+
+    if (this.isTestingMode && this.mockSender) {
+      await this.mockSender(title, message);
+      return;
+    }
+
+    const emoji = severity === 'ERROR' ? '🚨' : severity === 'WARN' ? '⚠️' : 'ℹ️';
+    const text = title ? `${emoji} *${title}*\n\n${message}` : message;
+    await this.sendMessage(text);
   }
 }

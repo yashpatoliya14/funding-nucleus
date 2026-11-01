@@ -201,11 +201,8 @@ export class TelegramCommander {
           break;
 
         default:
-          // If unknown command, provide quick options
-          await this.telegramNotifier.sendAlert(
-            'Command Not Recognized',
-            `Unknown command: \`${text}\`\n\nSend *help* to see available commands:\n• *wallet* - Check wallet balances\n• *next* - Next scheduled arbitrage trade\n• *top5* - Top 5 funding spreads\n• *status* - System & PnL status\n• *trades* - Open trades\n• *test* - Test connection orders\n• *flatten* - Emergency kill-switch`,
-            'INFO'
+          await this.telegramNotifier.sendMessage(
+            `Unknown command: \`${text}\`\n\nCommands:\n• *next* - Next trade plan\n• *wallet* - Exchange balances\n• *top5* - Top 5 funding spreads\n• *status* - Bot status\n• *test* - Test connection\n• *flatten* - Emergency stop`
           );
           break;
       }
@@ -216,21 +213,17 @@ export class TelegramCommander {
 
   private async handleHelp(): Promise<void> {
     const msg = [
-      `🤖 *ARBITRAGE BOT COMMAND MENU*`,
-      `━━━━━━━━━━━━━━━━━━━━━━`,
-      `• *wallet* (or *bal*) — Live Binance & Bybit balances & max safe trade size`,
-      `• *next* (or *plan*) — 🎯 Details of the next planned trade with countdown & sizing`,
-      `• *top5* (or *diff*) — Top 5 highest funding diff coins with APR & direction`,
-      `• *status* — System health, circuit breaker state, and today's PnL`,
-      `• *trades* (or *pos*) — Currently active arbitrage positions`,
-      `• *test* — 🧪 Place connection check orders for minimum lot of Ethereum (ETH) on both Binance & Bybit`,
-      `• *flatten* (or *kill*) — 🚨 Emergency kill-switch: closes all open positions`,
-      `• *help* — Show this command menu`,
-      `━━━━━━━━━━━━━━━━━━━━━━`,
-      `_Tip: You can send commands with or without slash (e.g. "wallet" or "/wallet")_`,
+      `🤖 *Arbitrage Bot Commands*`,
+      ``,
+      `• *next* — Plan to trade in next funding cycle`,
+      `• *wallet* — Binance & Bybit wallet balances`,
+      `• *top5* — Top 5 cross-exchange funding spreads`,
+      `• *status* — System health & today's PnL`,
+      `• *test* — Connection check order (ETH)`,
+      `• *flatten* — Emergency close all positions`,
     ].join('\n');
 
-    await this.telegramNotifier.sendAlert('Interactive Command Menu', msg, 'INFO');
+    await this.telegramNotifier.sendMessage(msg);
   }
 
   private async handleWallet(): Promise<void> {
@@ -240,109 +233,110 @@ export class TelegramCommander {
         this.bybitClient.getBalances(),
       ]);
 
-      let biUsdt = 0;
-      let biMargin = 0;
-      let biTotal = 0;
-      let biStatus = '✅ Connected';
+      let biAvail = '$0.00';
+      let biMargin = '$0.00';
+      let biTotal = '$0.00';
+      let biStatus = 'Connected';
 
       if (binanceBalances.status === 'fulfilled') {
         const usdt = binanceBalances.value.find((b) => b.asset === 'USDT');
-        biUsdt = usdt ? parseFloat(usdt.availableBalance.toString()) : 0;
-        biMargin = usdt ? parseFloat(usdt.marginBalance.toString()) : 0;
-        biTotal = usdt ? parseFloat(usdt.walletBalance.toString()) : 0;
+        if (usdt) {
+          biAvail = `$${parseFloat(usdt.availableBalance.toString()).toFixed(2)}`;
+          biMargin = `$${parseFloat(usdt.marginBalance.toString()).toFixed(2)}`;
+          biTotal = `$${parseFloat(usdt.walletBalance.toString()).toFixed(2)}`;
+        }
       } else {
-        const reason = binanceBalances.reason?.message || 'Check API Permissions';
-        biStatus = `❌ Error: ${reason}`;
+        biStatus = `Error (${binanceBalances.reason?.message || 'Check API'})`;
       }
 
-      let byUsdt = 0;
-      let byMargin = 0;
-      let byTotal = 0;
-      let byStatus = '✅ Connected';
+      let byAvail = '$0.00';
+      let byMargin = '$0.00';
+      let byTotal = '$0.00';
+      let byStatus = 'Connected';
 
       if (bybitBalances.status === 'fulfilled') {
         const usdt = bybitBalances.value.find((b) => b.asset === 'USDT');
-        byUsdt = usdt ? parseFloat(usdt.availableBalance.toString()) : 0;
-        byMargin = usdt ? parseFloat(usdt.marginBalance.toString()) : 0;
-        byTotal = usdt ? parseFloat(usdt.walletBalance.toString()) : 0;
+        if (usdt) {
+          byAvail = `$${parseFloat(usdt.availableBalance.toString()).toFixed(2)}`;
+          byMargin = `$${parseFloat(usdt.marginBalance.toString()).toFixed(2)}`;
+          byTotal = `$${parseFloat(usdt.walletBalance.toString()).toFixed(2)}`;
+        }
       } else {
-        const reason = bybitBalances.reason?.message || 'Check API Credentials';
-        byStatus = `❌ Error: ${reason}`;
+        byStatus = `Error (${bybitBalances.reason?.message || 'Check API'})`;
       }
 
-      const bottleneck = Math.min(biUsdt, byUsdt);
-      const margin = this.marginPerLegUsd;
+      const numBi = parseFloat(biAvail.replace('$', '')) || 0;
+      const numBy = parseFloat(byAvail.replace('$', '')) || 0;
+      const limiting = Math.min(numBi, numBy);
       const lev = this.defaultLeverageCap;
+      const margin = this.marginPerLegUsd;
       const targetNotional = margin * lev;
-      const targetTotalNotional = targetNotional * 2;
-      const totalMarginNeeded = margin * 2;
-      const maxAffordableNotional = Math.floor(bottleneck * lev);
 
       const msg = [
-        `💼 *EXCHANGE WALLET AUDIT*`,
-        `━━━━━━━━━━━━━━━━━━━━━━`,
-        `🟡 *Binance Futures Wallet:* ${biStatus}`,
-        `   • Available: \`$${biUsdt.toFixed(2)} USDT\``,
-        `   • Margin: \`$${biMargin.toFixed(2)} USDT\``,
-        `   • Total: \`$${biTotal.toFixed(2)} USDT\``,
-        '',
-        `⚫ *Bybit Unified Wallet:* ${byStatus}`,
-        `   • Available: \`$${byUsdt.toFixed(2)} USDT\``,
-        `   • Margin: \`$${byMargin.toFixed(2)} USDT\``,
-        `   • Total: \`$${byTotal.toFixed(2)} USDT\``,
-        '',
-        `⚖️ *Capital Bottleneck:* \`$${bottleneck.toFixed(2)} USDT\``,
-        `⚙️ *Configured Sizing (Config & .env):*`,
-        `   • Trade Margin Per Leg: \`$${margin.toFixed(2)} USDT\` ($${totalMarginNeeded.toFixed(2)} total)`,
-        `   • Max Leverage Cap: \`${lev}x\``,
-        `   • Target Trade Notional: \`$${targetNotional.toFixed(2)}\` per leg ($${targetTotalNotional.toFixed(2)} total)`,
-        `🚀 *Max Safe Notional at ${lev}x:* \`$${maxAffordableNotional.toFixed(2)} USDT\` per leg`,
-        `━━━━━━━━━━━━━━━━━━━━━━`,
+        `💼 *Exchange Wallets*`,
+        ``,
+        `🟡 *Binance Futures* (${biStatus})`,
+        `• Available: \`${biAvail} USDT\``,
+        `• Margin: \`${biMargin} USDT\``,
+        `• Total: \`${biTotal} USDT\``,
+        ``,
+        `⚫ *Bybit Unified* (${byStatus})`,
+        `• Available: \`${byAvail} USDT\``,
+        `• Margin: \`${byMargin} USDT\``,
+        `• Total: \`${byTotal} USDT\``,
+        ``,
+        `⚖️ *Limiting Trading Margin:* \`$${limiting.toFixed(2)} USDT\``,
+        `⚙️ *Config:* \`$${margin.toFixed(2)}\` margin/leg @ \`${lev}x\` = \`$${targetNotional.toFixed(2)}\` notional/leg`,
       ].join('\n');
 
-      await this.telegramNotifier.sendAlert('Wallet & Margin Status', msg, 'INFO');
+      await this.telegramNotifier.sendMessage(msg);
     } catch (err: any) {
-      await this.telegramNotifier.sendAlert('Wallet Query Error', `Failed to query wallets: ${err?.message}`, 'ERROR');
+      await this.telegramNotifier.sendMessage(`⚠️ Failed to query wallets: ${err?.message || err}`);
     }
   }
 
   private async handleTop5(): Promise<void> {
     try {
-      if (this.getOpportunitiesSnapshot) {
-        const opps = await this.getOpportunitiesSnapshot();
-        if (opps && opps.length > 0) {
-          const top5 = opps.slice(0, 5);
-          const lines = top5.map((opp, idx) => {
-            const coin = opp.mapping ? opp.mapping.normalized_symbol : opp.symbol || 'UNKNOWN';
-            const edge = parseFloat((opp.fundingDiffPct || opp.diffPct || 0).toString()).toFixed(4);
-            const bRate = (parseFloat((opp.binanceRate || opp.binanceRatePct || 0).toString()) * (opp.binanceRatePct ? 1 : 100)).toFixed(4);
-            const byRate = (parseFloat((opp.bybitRate || opp.bybitRatePct || 0).toString()) * (opp.bybitRatePct ? 1 : 100)).toFixed(4);
-            const bSign = parseFloat(bRate) > 0 ? '+' : '';
-            const bySign = parseFloat(byRate) > 0 ? '+' : '';
-            const apr = (parseFloat(edge) * 3 * 365).toFixed(1);
-            return `${idx + 1}. *${coin}* | Diff: \`${edge}%\` (APR: \`${apr}%\`)\n   • BI: \`${bSign}${bRate}%\` | BY: \`${bySign}${byRate}%\``;
-          });
-
-          const msg = [
-            `🔥 *TOP 5 FUNDING SPREADS (BINANCE vs BYBIT)*`,
-            `━━━━━━━━━━━━━━━━━━━━━━`,
-            lines.join('\n\n'),
-            `━━━━━━━━━━━━━━━━━━━━━━`,
-            `_Updated from live market scanner cache_`,
-          ].join('\n');
-
-          await this.telegramNotifier.sendAlert('Top 5 Funding Spreads', msg, 'INFO');
-          return;
-        }
+      if (!this.getOpportunitiesSnapshot) {
+        await this.telegramNotifier.sendMessage('⚠️ Scanner is not currently active.');
+        return;
       }
 
-      await this.telegramNotifier.sendAlert(
-        'Top 5 Funding Spreads',
-        'Scanner is currently collecting order books. Send *top5* again in 10 seconds.',
-        'INFO'
-      );
+      const opps = await this.getOpportunitiesSnapshot();
+      if (!opps || opps.length === 0) {
+        await this.telegramNotifier.sendMessage('📊 No cross-exchange funding spreads available yet.');
+        return;
+      }
+
+      const top5 = opps.slice(0, 5);
+      const now = Date.now();
+
+      const lines = top5.map((opp, idx) => {
+        const coin = opp.mapping ? opp.mapping.normalized_symbol : opp.symbol || 'UNKNOWN';
+        const edge = parseFloat((opp.fundingDiffPct || opp.diffPct || 0).toString()).toFixed(4);
+        const bRate = (parseFloat((opp.binanceRate || 0).toString()) * 100).toFixed(4);
+        const byRate = (parseFloat((opp.bybitRate || 0).toString()) * 100).toFixed(4);
+        const bSign = parseFloat(bRate) > 0 ? '+' : '';
+        const bySign = parseFloat(byRate) > 0 ? '+' : '';
+        const apr = (parseFloat(edge) * 3 * 365).toFixed(1);
+
+        const targetTime = opp.targetFundingTimeMs || 0;
+        const msLeft = Math.max(0, targetTime - now);
+        const hours = Math.floor(msLeft / 3600000);
+        const mins = Math.floor((msLeft % 3600000) / 60000);
+        const timeStr = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+
+        return [
+          `${idx + 1}. *${coin}* | Spread: *${edge}%* (${apr}% APR)`,
+          `   • Binance: \`${bSign}${bRate}%\` | Bybit: \`${bySign}${byRate}%\``,
+          `   • Settlement: in \`${timeStr}\``,
+        ].join('\n');
+      });
+
+      const msg = [`📊 *Top 5 Funding Spreads*`, ``, ...lines].join('\n');
+      await this.telegramNotifier.sendMessage(msg);
     } catch (err: any) {
-      await this.telegramNotifier.sendAlert('Scan Error', `Failed to retrieve spreads: ${err?.message}`, 'ERROR');
+      await this.telegramNotifier.sendMessage(`⚠️ Failed to retrieve top 5 spreads: ${err?.message || err}`);
     }
   }
 
@@ -353,7 +347,7 @@ export class TelegramCommander {
       const isCbTripped = this.circuitBreaker.isTripped();
       const isKillEngaged = this.killSwitch.isEngaged();
 
-      let health = '🟢 HEALTHY';
+      let health = '🟢 Running & Scanning';
       if (isKillEngaged) health = '🔴 KILL SWITCH ENGAGED';
       else if (isCbTripped) health = '🟠 CIRCUIT BREAKER TRIPPED';
 
@@ -361,42 +355,31 @@ export class TelegramCommander {
       const pnlSign = netPnl >= 0 ? '+' : '';
 
       const msg = [
-        `📊 *SYSTEM & OPERATIONAL STATUS*`,
-        `━━━━━━━━━━━━━━━━━━━━━━`,
-        `• *System Health:* ${health}`,
+        `🤖 *Bot Status*`,
+        ``,
+        `• *State:* ${health}`,
         `• *Active Trades:* \`${activeTrades.length}\``,
-        `• *Today Completed Trades:* \`${today.trade_count}\``,
-        `• *Today Realized PnL:* \`${pnlSign}$${netPnl.toFixed(2)}\``,
-        `• *Today Funding PnL:* \`$${parseFloat(today.total_funding_pnl_usd.toString()).toFixed(2)}\``,
-        `• *Today Fees Paid:* \`-$${parseFloat(today.total_fees_usd.toString()).toFixed(2)}\``,
-        `• *Loss Limit Reached:* \`${today.loss_limit_hit ? 'YES (HALTED)' : 'NO'}\``,
-        `━━━━━━━━━━━━━━━━━━━━━━`,
+        `• *Today Completed:* \`${today.trade_count}\``,
+        `• *Today Net PnL:* \`${pnlSign}$${netPnl.toFixed(4)} USDT\``,
+        `• *Config:* \`$${this.marginPerLegUsd}\` margin/leg @ \`${this.defaultLeverageCap}x\``,
       ].join('\n');
 
-      await this.telegramNotifier.sendAlert('System Status', msg, 'INFO');
+      await this.telegramNotifier.sendMessage(msg);
     } catch (err: any) {
-      await this.telegramNotifier.sendAlert('Status Error', `Failed to query status: ${err?.message}`, 'ERROR');
+      await this.telegramNotifier.sendMessage(`⚠️ Failed to query status: ${err?.message || err}`);
     }
   }
 
   private async handleNextPlannedTrade(): Promise<void> {
     try {
       if (!this.getOpportunitiesSnapshot) {
-        await this.telegramNotifier.sendAlert(
-          'Next Planned Trade',
-          'Market scanner is not currently initialized.',
-          'WARN'
-        );
+        await this.telegramNotifier.sendMessage('⚠️ Scanner is not currently active.');
         return;
       }
 
       const opps = await this.getOpportunitiesSnapshot();
       if (!opps || opps.length === 0) {
-        await this.telegramNotifier.sendAlert(
-          'Next Planned Trade',
-          '🔍 Currently scanning all 675 perpetuals... No aligned opportunity found yet. Check back in 10s.',
-          'INFO'
-        );
+        await this.telegramNotifier.sendMessage('🔍 Scanning perpetuals... No aligned opportunity found yet.');
         return;
       }
 
@@ -425,94 +408,86 @@ export class TelegramCommander {
       const secEntry = totalSecEntry % 60;
       const entryStr = hoursEntry > 0 ? `${hoursEntry}h ${minEntry}m ${secEntry}s` : `${minEntry}m ${secEntry}s`;
 
-      // Deep evaluate if evaluator available
-      let detailedSizing = '';
-      let profitabilityBreakdown = '';
-      let isApprovedStr = '⏳ Waiting for Entry Window';
+      let sizingText = '';
+      let profitText = '';
+      let statusText = '⏳ Waiting for Entry Window';
 
       if (this.evaluateOpportunity) {
         try {
           const evaluated = await this.evaluateOpportunity(topOpp);
-          if (evaluated && evaluated.sizing) {
+          if (evaluated && evaluated.sizing && evaluated.sizing.appliedLeverage) {
             const appliedLev = evaluated.sizing.appliedLeverage;
-            const bNotional = evaluated.sizing.binanceActualNotionalUsd ? evaluated.sizing.binanceActualNotionalUsd.toFixed(2) : '50.00';
-            const byNotional = evaluated.sizing.bybitActualNotionalUsd ? evaluated.sizing.bybitActualNotionalUsd.toFixed(2) : '50.00';
+            const bNotional = evaluated.sizing.binanceActualNotionalUsd ? evaluated.sizing.binanceActualNotionalUsd.toFixed(2) : (this.marginPerLegUsd * appliedLev).toFixed(2);
+            const byNotional = evaluated.sizing.bybitActualNotionalUsd ? evaluated.sizing.bybitActualNotionalUsd.toFixed(2) : (this.marginPerLegUsd * appliedLev).toFixed(2);
             const bQty = evaluated.sizing.binanceQuantity ? evaluated.sizing.binanceQuantity.toFixed(4) : '0';
             const byQty = evaluated.sizing.bybitQuantity ? evaluated.sizing.bybitQuantity.toFixed(4) : '0';
             const bMargin = (parseFloat(bNotional) / appliedLev).toFixed(2);
             const byMargin = (parseFloat(byNotional) / appliedLev).toFixed(2);
 
-            const biSide = evaluated.profitability?.direction === 'SHORT_BINANCE_LONG_BYBIT' ? 'SHORT (SELL)' : 'LONG (BUY)';
-            const bySide = evaluated.profitability?.direction === 'SHORT_BINANCE_LONG_BYBIT' ? 'LONG (BUY)' : 'SHORT (SELL)';
+            const biSide = evaluated.profitability?.direction === 'SHORT_BINANCE_LONG_BYBIT' ? 'SHORT' : 'LONG';
+            const bySide = evaluated.profitability?.direction === 'SHORT_BINANCE_LONG_BYBIT' ? 'LONG' : 'SHORT';
 
-            detailedSizing = [
-              `⚖️ *Common Dynamic Leverage:* \`${appliedLev}x\` (Auto-matched)`,
-              `• *Binance Leg:* \`${biSide}\``,
-              `   └ Notional: \`$${bNotional}\` | Qty: \`${bQty}\``,
-              `   └ Required Margin: \`$${bMargin} USDT\``,
-              `• *Bybit Leg:* \`${bySide}\``,
-              `   └ Notional: \`$${byNotional}\` | Qty: \`${byQty}\``,
-              `   └ Required Margin: \`$${byMargin} USDT\``,
+            sizingText = [
+              `• *Sizing (${appliedLev}x Leverage):*`,
+              `  - Binance: ${biSide} \`${bQty} ${coin}\` (~$${bNotional} | $${bMargin} margin)`,
+              `  - Bybit: ${bySide} \`${byQty} ${coin}\` (~$${byNotional} | $${byMargin} margin)`,
             ].join('\n');
 
-            if (evaluated.profitability) {
-              const netPnlNum = evaluated.profitability.expectedNetProfitUsd ? parseFloat(evaluated.profitability.expectedNetProfitUsd.toString()) : 0;
-              const netPnlSign = netPnlNum >= 0 ? '+' : '';
-              const netPnlStr = `${netPnlSign}$${netPnlNum.toFixed(4)}`;
+            if (evaluated.profitability && evaluated.profitability.expectedNetProfitUsd) {
+              const netProfit = parseFloat(evaluated.profitability.expectedNetProfitUsd.toString());
+              const netProfitSign = netProfit >= 0 ? '+' : '';
+              const netProfitStr = `${netProfitSign}$${netProfit.toFixed(4)}`;
 
               const totalFees = evaluated.profitability.estimatedEntryFees
                 ? evaluated.profitability.estimatedEntryFees.plus(evaluated.profitability.estimatedExitFees).toFixed(4)
-                : '0.0000';
-              const totalSlippage = evaluated.profitability.estimatedEntrySlippageUsd
-                ? evaluated.profitability.estimatedEntrySlippageUsd.plus(evaluated.profitability.estimatedExitSlippageUsd).toFixed(4)
                 : '0.0000';
               const grossFunding = evaluated.profitability.netFundingCashFlow
                 ? evaluated.profitability.netFundingCashFlow.toFixed(4)
                 : '0.0000';
 
-              profitabilityBreakdown = [
-                `💰 *Projected Profit & Cost Breakdown:*`,
-                `• *Gross Funding Cash Flow:* \`+$${grossFunding} USDT\``,
-                `• *Taker Fees (Entry + Exit):* \`-$${totalFees} USDT\``,
-                `• *Est. Slippage Cost:* \`-$${totalSlippage} USDT\``,
-                `• *Expected NET Profit:* \`${netPnlStr} USDT\``,
+              profitText = [
+                `• *Profit Projection:*`,
+                `  - Gross Funding: \`+$${grossFunding} USDT\``,
+                `  - Est. Fees & Slip: \`-$${totalFees} USDT\``,
+                `  - Expected Net Profit: \`${netProfitStr} USDT\``,
               ].join('\n');
-            }
 
-            if (evaluated.isApproved) {
-              isApprovedStr = '✅ *Pre-Approved & Ready To Fire*';
-            } else if (evaluated.rejectionReason) {
-              isApprovedStr = `⚠️ *Filter Status:* ${evaluated.rejectionReason}`;
+              if (netProfit <= 0) {
+                statusText = `❌ *Rejected:* Expected net profit (${netProfitStr}) is in minus. Trade will NOT be taken.`;
+              } else if (evaluated.isApproved) {
+                statusText = `✅ *Approved:* Expected profit (${netProfitStr}) is positive. Will execute in ${entryStr}.`;
+              } else if (evaluated.rejectionReason) {
+                statusText = `⚠️ *Filter Pending:* ${evaluated.rejectionReason}`;
+              }
             }
           } else if (evaluated && evaluated.rejectionReason) {
-            isApprovedStr = `⚠️ *Filter Status:* ${evaluated.rejectionReason}`;
+            statusText = `⚠️ *Filter Status:* ${evaluated.rejectionReason}`;
           }
         } catch (evalErr: any) {
-          isApprovedStr = `⚠️ *Evaluation Error:* ${evalErr?.message || evalErr}`;
+          statusText = `⚠️ *Evaluation Error:* ${evalErr?.message || evalErr}`;
         }
       }
 
       const msg = [
-        `🎯 *NEXT PLANNED ARBITRAGE TRADE*`,
-        `━━━━━━━━━━━━━━━━━━━━━━`,
-        `🪙 *Target Coin:* \`${coin}\``,
-        `📊 *Funding Difference (Edge):* \`${edgePct}%\` (APR: \`${apr}%\`)`,
-        `   • Binance Rate: \`${bSign}${bRate}%\``,
-        `   • Bybit Rate: \`${bySign}${byRate}%\``,
-        '',
-        `⏰ *Timing & Schedule:*`,
-        `• *Funding Settlement Due In:* \`${settlementStr}\``,
-        `• *Auto-Entry Orders Fire In:* \`${entryStr}\` (${this.entryLeadMinutes}m pre-funding)`,
-        '',
-        detailedSizing ? `${detailedSizing}\n` : '',
-        profitabilityBreakdown ? `${profitabilityBreakdown}\n` : '',
-        `📋 *Status:* ${isApprovedStr}`,
-        `━━━━━━━━━━━━━━━━━━━━━━`,
-      ].join('\n');
+        `🎯 *Next Trade Plan*`,
+        ``,
+        `• *Coin:* \`${coin}\``,
+        `• *Funding Spread:* \`${edgePct}%\` (APR: \`${apr}%\`)`,
+        `  - Binance: \`${bSign}${bRate}%\``,
+        `  - Bybit: \`${bySign}${byRate}%\``,
+        ``,
+        `• *Timing:*`,
+        `  - Settlement Due: \`${settlementStr}\``,
+        `  - Orders Fire: \`${entryStr}\` (${this.entryLeadMinutes}m pre-funding)`,
+        ``,
+        sizingText,
+        profitText,
+        `• *Decision:* ${statusText}`,
+      ].filter(Boolean).join('\n');
 
-      await this.telegramNotifier.sendAlert(`Next Planned Trade: ${coin}`, msg, 'INFO');
+      await this.telegramNotifier.sendMessage(msg);
     } catch (err: any) {
-      await this.telegramNotifier.sendAlert('Next Trade Query Error', `Failed to determine next trade: ${err?.message}`, 'ERROR');
+      await this.telegramNotifier.sendMessage(`⚠️ Failed to determine next trade: ${err?.message || err}`);
     }
   }
 
@@ -520,67 +495,38 @@ export class TelegramCommander {
     try {
       const activeTrades = this.tradeRepo.getActiveTrades();
       if (activeTrades.length === 0) {
-        await this.telegramNotifier.sendAlert(
-          'Active Positions',
-          '🟢 *No open positions.* Engine is idle and scanning for opportunities.',
-          'INFO'
-        );
+        await this.telegramNotifier.sendMessage('🟢 No open positions. Engine is scanning for opportunities.');
         return;
       }
 
       const lines = activeTrades.map((t, idx) => {
         return [
-          `*${idx + 1}. ${t.coin}* (ID: \`${t.id.slice(0, 8)}\`)`,
-          `• *State:* \`${t.state}\``,
-          `• *Direction:* \`${t.direction}\``,
-          `• *Leg Notional:* \`$${t.target_notional_usd}\``,
-          `• *Exp Net Profit:* \`$${t.expected_net_profit_usd}\``,
+          `${idx + 1}. *${t.coin}*`,
+          `• State: \`${t.state}\` | Direction: \`${t.direction}\``,
+          `• Notional: \`$${t.target_notional_usd}\` | Exp Profit: \`$${t.expected_net_profit_usd}\``,
         ].join('\n');
       });
 
-      const msg = [
-        `⚡ *ACTIVE OPEN POSITIONS (${activeTrades.length})*`,
-        `━━━━━━━━━━━━━━━━━━━━━━`,
-        lines.join('\n\n'),
-        `━━━━━━━━━━━━━━━━━━━━━━`,
-      ].join('\n');
-
-      await this.telegramNotifier.sendAlert('Active Positions', msg, 'INFO');
+      const msg = [`⚡ *Active Open Positions (${activeTrades.length})*`, ``, ...lines].join('\n');
+      await this.telegramNotifier.sendMessage(msg);
     } catch (err: any) {
-      await this.telegramNotifier.sendAlert('Trades Error', `Failed to query trades: ${err?.message}`, 'ERROR');
+      await this.telegramNotifier.sendMessage(`⚠️ Failed to query trades: ${err?.message || err}`);
     }
   }
 
   private async handleEmergencyFlatten(): Promise<void> {
     try {
-      await this.telegramNotifier.sendAlert(
-        '🚨 EMERGENCY FLATTEN INITIATED 🚨',
-        'Operator requested emergency flatten via Telegram. Liquidating all positions and engaging kill switch...',
-        'WARN'
-      );
-
       this.killSwitch.activate('Telegram operator emergency flatten command');
       await this.killSwitch.emergencyFlatten();
-
-      await this.telegramNotifier.sendAlert(
-        '✅ FLATTEN COMPLETE',
-        'All open positions closed. Accounts verified flat. Kill switch is now active.',
-        'INFO'
-      );
+      await this.telegramNotifier.sendMessage('🛑 *Kill Switch Engaged:* All open positions closed. Accounts flat.');
     } catch (err: any) {
-      await this.telegramNotifier.sendAlert('Emergency Flatten Error', `Flatten failed: ${err?.message}`, 'ERROR');
+      await this.telegramNotifier.sendMessage(`⚠️ Flatten failed: ${err?.message || err}`);
     }
   }
 
   private async handleDualTestOrder(): Promise<void> {
     const symbol = 'ETHUSDT';
     try {
-      await this.telegramNotifier.sendAlert(
-        '🧪 CONNECTION TEST INITIATED',
-        `Submitting minimum lot market BUY order for *${symbol}* simultaneously on *Binance* and *Bybit* with 3s auto-close...`,
-        'INFO'
-      );
-
       // Execute on both Binance and Bybit concurrently
       const [binanceRes, bybitRes] = await Promise.allSettled([
         executeTestOrder(this.binanceClient, {
@@ -607,44 +553,35 @@ export class TelegramCommander {
         const by = (bybitRes as PromiseFulfilledResult<any>).value;
 
         const msg = [
-          `🎉 *DUAL CONNECTION TEST SUCCESSFUL!*`,
-          `━━━━━━━━━━━━━━━━━━━━━━`,
+          `🧪 *Connection Test: PASSED*`,
+          ``,
           `🟡 *Binance Futures (ETH):*`,
-          `   • Qty: \`${b.qty} ETH\` (~$${b.notionalUsd})`,
-          `   • Entry Price: \`$${b.entryPrice}\``,
-          `   • Open Status: \`${b.openStatus}\` | Closed: \`${b.closeStatus || 'FILLED'}\``,
-          '',
+          `• Qty: \`${b.qty} ETH\` (~$${b.notionalUsd})`,
+          `• Status: Open \`${b.openStatus}\` | Closed \`${b.closeStatus || 'FILLED'}\``,
+          ``,
           `⚫ *Bybit Unified (ETH):*`,
-          `   • Qty: \`${by.qty} ETH\` (~$${by.notionalUsd})`,
-          `   • Entry Price: \`$${by.entryPrice}\``,
-          `   • Open Status: \`${by.openStatus}\` | Closed: \`${by.closeStatus || 'FILLED'}\``,
-          `━━━━━━━━━━━━━━━━━━━━━━`,
-          `✅ Both exchange APIs and orders executed and auto-closed successfully!`,
+          `• Qty: \`${by.qty} ETH\` (~$${by.notionalUsd})`,
+          `• Status: Open \`${by.openStatus}\` | Closed \`${by.closeStatus || 'FILLED'}\``,
+          ``,
+          `✅ Both exchange orders executed and auto-closed successfully!`,
         ].join('\n');
 
-        await this.telegramNotifier.sendAlert('Connection Test: PASSED', msg, 'INFO');
+        await this.telegramNotifier.sendMessage(msg);
       } else {
-        // One or both failed
         const bErr = binanceRes.status === 'rejected' ? (binanceRes.reason?.message || binanceRes.reason) : (binanceRes.value.error || 'OK');
         const byErr = bybitRes.status === 'rejected' ? (bybitRes.reason?.message || bybitRes.reason) : (bybitRes.value.error || 'OK');
 
         const errMsg = [
-          `🚨 *CONNECTION TEST FAILED!*`,
-          `━━━━━━━━━━━━━━━━━━━━━━`,
-          `🟡 *Binance:* ${isBinanceOk ? '✅ Success' : `❌ Failed: \`${bErr}\``}`,
-          `⚫ *Bybit:* ${isBybitOk ? '✅ Success' : `❌ Failed: \`${byErr}\``}`,
-          `━━━━━━━━━━━━━━━━━━━━━━`,
-          `⚠️ Please check API permissions (Enable Futures) and available USDT balance!`,
+          `🚨 *Connection Test: FAILED*`,
+          ``,
+          `• Binance: ${isBinanceOk ? '✅ Success' : `❌ Failed: \`${bErr}\``}`,
+          `• Bybit: ${isBybitOk ? '✅ Success' : `❌ Failed: \`${byErr}\``}`,
         ].join('\n');
 
-        await this.telegramNotifier.sendAlert('Connection Test: FAILED', errMsg, 'ERROR');
+        await this.telegramNotifier.sendMessage(errMsg);
       }
     } catch (err: any) {
-      await this.telegramNotifier.sendAlert(
-        'Connection Test Error',
-        `Unexpected error during test execution:\n\`${err?.message || err}\``,
-        'ERROR'
-      );
+      await this.telegramNotifier.sendMessage(`⚠️ Test order error: ${err?.message || err}`);
     }
   }
 }
