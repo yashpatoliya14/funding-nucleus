@@ -438,17 +438,27 @@ export class TelegramCommander {
               const netProfitSign = netProfit >= 0 ? '+' : '';
               const netProfitStr = `${netProfitSign}$${netProfit.toFixed(4)}`;
 
-              const totalFees = evaluated.profitability.estimatedEntryFees
-                ? evaluated.profitability.estimatedEntryFees.plus(evaluated.profitability.estimatedExitFees).toFixed(4)
+              const entryFees = evaluated.profitability.estimatedEntryFees;
+              const exitFees = evaluated.profitability.estimatedExitFees;
+              const totalFees = entryFees && exitFees
+                ? entryFees.plus(exitFees).toFixed(4)
                 : '0.0000';
+
+              const entrySlip = evaluated.profitability.estimatedEntrySlippageUsd;
+              const exitSlip = evaluated.profitability.estimatedExitSlippageUsd;
+              const totalSlippage = entrySlip && exitSlip
+                ? entrySlip.plus(exitSlip).toFixed(4)
+                : '0.0000';
+
               const grossFunding = evaluated.profitability.netFundingCashFlow
                 ? evaluated.profitability.netFundingCashFlow.toFixed(4)
                 : '0.0000';
 
               profitText = [
-                `• *Profit Projection:*`,
+                `• *Profit & Cost Breakdown:*`,
                 `  - Gross Funding: \`+$${grossFunding} USDT\``,
-                `  - Est. Fees & Slip: \`-$${totalFees} USDT\``,
+                `  - Trading Fees Takes: \`-$${totalFees} USDT\` (Entry + Exit taker fees)`,
+                `  - Slippage Cost Takes: \`-$${totalSlippage} USDT\` (Orderbook execution spread)`,
                 `  - Expected Net Profit: \`${netProfitStr} USDT\``,
               ].join('\n');
 
