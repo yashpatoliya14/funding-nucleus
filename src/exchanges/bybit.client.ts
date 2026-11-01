@@ -211,21 +211,43 @@ export class BybitClient implements IExchangeClient {
 
     const balances: AccountBalance[] = [];
     for (const item of data.list || []) {
+      const itemAvail = item.totalAvailableBalance && item.totalAvailableBalance !== '' ? item.totalAvailableBalance : '0';
+      const itemWallet = item.totalWalletBalance && item.totalWalletBalance !== '' ? item.totalWalletBalance : '0';
+      const itemEquity = item.totalEquity && item.totalEquity !== '' ? item.totalEquity : itemWallet;
+
       for (const coin of item.coin || []) {
         const wBal = coin.walletBalance && coin.walletBalance !== '' ? coin.walletBalance : '0';
         const eq = coin.equity && coin.equity !== '' ? coin.equity : wBal;
-        const avail = coin.availableToWithdraw && coin.availableToWithdraw !== '' && coin.availableToWithdraw !== '0'
+        const rawAvail = coin.availableToWithdraw && coin.availableToWithdraw !== '' && coin.availableToWithdraw !== '0'
           ? coin.availableToWithdraw
-          : (parseFloat(wBal) > 0 ? wBal : eq);
+          : (parseFloat(wBal) > 0 ? wBal : (parseFloat(eq) > 0 ? eq : itemAvail));
 
         balances.push({
           exchange: this.exchangeName,
           asset: coin.coin,
           walletBalance: toDecimal(wBal),
-          availableBalance: toDecimal(avail),
+          availableBalance: toDecimal(rawAvail),
           marginBalance: toDecimal(eq),
           unrealizedPnl: toDecimal(coin.unrealisedPnl || '0'),
         });
+      }
+
+      // If USDT is not found or has 0 balance, but the Unified account has available balance in USD/equity:
+      const usdtEntry = balances.find((b) => b.asset === 'USDT');
+      if (!usdtEntry && parseFloat(itemWallet) > 0) {
+        balances.push({
+          exchange: this.exchangeName,
+          asset: 'USDT',
+          walletBalance: toDecimal(itemWallet),
+          availableBalance: toDecimal(parseFloat(itemAvail) > 0 ? itemAvail : itemWallet),
+          marginBalance: toDecimal(itemEquity),
+          unrealizedPnl: toDecimal(item.totalPerpUPL || '0'),
+        });
+      } else if (usdtEntry && usdtEntry.availableBalance.isZero() && parseFloat(itemAvail) > 0) {
+        usdtEntry.availableBalance = toDecimal(itemAvail);
+        if (usdtEntry.walletBalance.isZero()) {
+          usdtEntry.walletBalance = toDecimal(itemWallet);
+        }
       }
     }
 
