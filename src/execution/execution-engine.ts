@@ -206,6 +206,36 @@ export class ExecutionEngine {
         'Both legs filled and matched exposure confirmed'
       );
 
+      if (this.telegram) {
+        const bPrice = bOrder?.averagePrice ? bOrder.averagePrice.toFixed(4) : 'Market';
+        const byPrice = byOrder?.averagePrice ? byOrder.averagePrice.toFixed(4) : 'Market';
+        const bAction = bSide === 'SELL' ? 'SHORT (SELL)' : 'LONG (BUY)';
+        const byAction = bySide === 'BUY' ? 'LONG (BUY)' : 'SHORT (SELL)';
+        const lev = candidate.sizing.appliedLeverage || 10;
+        const notional = candidate.sizing.binanceActualNotionalUsd.toFixed(2);
+        const marginPerLeg = (parseFloat(notional) / lev).toFixed(2);
+        const targetTimeStr = new Date(candidate.opportunity.targetFundingTimeMs).toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
+
+        const entryAlert = [
+          `🟢 *TRADE ENTERED & FULLY HEDGED* 🟢`,
+          `━━━━━━━━━━━━━━━━━━━━━━`,
+          `🎯 *Pair:* \`${coin}\` (Binance & Bybit)`,
+          `⚖️ *Leverage:* \`${lev}x\` | *Margin/Leg:* \`$${marginPerLeg} USDT\``,
+          `💼 *Position Notional:* \`~\$${notional} USDT\``,
+          ``,
+          `📥 *Live Fills Confirmed:*`,
+          `• *Binance:* \`${bAction}\` @ \`$${bPrice}\` (Qty: \`${recon.binanceExecutedQty.toString()}\`)`,
+          `• *Bybit:* \`${byAction}\` @ \`$${byPrice}\` (Qty: \`${recon.bybitExecutedQty.toString()}\`)`,
+          ``,
+          `⏳ *Status:* Delta-neutral active. Waiting for settlement at \`${targetTimeStr}\``,
+          `🛡️ *Active Guardians:* 5-second liquidation guard & margin drift monitor`,
+          `━━━━━━━━━━━━━━━━━━━━━━`,
+          `_Both legs locked. Will auto-close positions right after settlement._`
+        ].join('\n');
+
+        await this.telegram.sendMessage(entryAlert);
+      }
+
       // 6. Transition to WAITING_FOR_FUNDING
       currentState = this.stateMachine.transition(
         tradeId,
@@ -529,6 +559,32 @@ export class ExecutionEngine {
         'COMPLETED',
         `Trade completed successfully. Net PnL: $${netPnl.toFixed(4)}`
       );
+
+      if (this.telegram) {
+        const pnlSign = netPnl.greaterThanOrEqualTo(0) ? '+' : '';
+        const pnlIcon = netPnl.greaterThanOrEqualTo(0) ? '🟢' : '🔴';
+        const grossFunding = totalFundingReceived.toFixed(4);
+        const feesStr = totalFees.toFixed(4);
+        const netPnlStr = netPnl.toFixed(4);
+
+        const closeAlert = [
+          `🏁 *TRADE COMPLETED & POSITIONS CLOSED* 🏁`,
+          `━━━━━━━━━━━━━━━━━━━━━━`,
+          `🎯 *Pair:* \`${coin}\``,
+          `🛡️ *Position Status:* \`100% FLAT (Zero Open Exposure)\``,
+          ``,
+          `💰 *Realized Cash Flow & Net Profit:*`,
+          `• *Gross Funding Collected:* \`+\$${grossFunding} USDT\``,
+          `• *Total Exchange Fees Paid:* \`-\$${feesStr} USDT\``,
+          `• ${pnlIcon} *Net Realized Profit:* \`*${pnlSign}\$${netPnlStr} USDT*\``,
+          ``,
+          `✅ Both accounts verified flat. Margin returned to free balance.`,
+          `━━━━━━━━━━━━━━━━━━━━━━`,
+          `_Bot resumed scanning for the next funding opportunity._`
+        ].join('\n');
+
+        await this.telegram.sendMessage(closeAlert);
+      }
 
       logger.info({ tradeId, netPnl: netPnl.toFixed(4) }, 'Trade lifecycle completed successfully');
       return this.tradeRepo.getById(tradeId)!;

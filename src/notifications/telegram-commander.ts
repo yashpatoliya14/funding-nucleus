@@ -202,7 +202,7 @@ export class TelegramCommander {
 
         default:
           await this.telegramNotifier.sendMessage(
-            `Unknown command: \`${text}\`\n\nCommands:\n• *next* - Next trade plan\n• *wallet* - Exchange balances\n• *top5* - Top 5 funding spreads\n• *status* - Bot status\n• *test* - Test connection\n• *flatten* - Emergency stop`
+            `❓ Unknown command: \`${text}\`\n\nSend one of these commands:\n• *next* — Next trade plan & profit forecast\n• *wallet* — Binance & Bybit balances & margin\n• *top5* — Top 5 funding spreads\n• *status* — Bot status & today's PnL\n• *help* — Full guide & alert overview\n• *test* — Connection test\n• *flatten* — Emergency close all positions`
           );
           break;
       }
@@ -213,14 +213,24 @@ export class TelegramCommander {
 
   private async handleHelp(): Promise<void> {
     const msg = [
-      `🤖 *Arbitrage Bot Commands*`,
-      ``,
-      `• *next* — Plan to trade in next funding cycle`,
-      `• *wallet* — Binance & Bybit wallet balances`,
-      `• *top5* — Top 5 cross-exchange funding spreads`,
-      `• *status* — System health & today's PnL`,
-      `• *test* — Connection check order (ETH)`,
-      `• *flatten* — Emergency close all positions`,
+      `🤖 *FUNDING ARBITRAGE BOT — COMMAND & ALERT GUIDE* 🤖`,
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+      `💬 *Commands You Can Send At Any Time:*\n`,
+      `• *next* — Shows the upcoming candidate pair, margin required, fee deductions, and net profit forecast.`,
+      `• *wallet* — Shows live USDT balances, free margin, and fee tiers on Binance & Bybit.`,
+      `• *top5* — Displays the top 5 highest cross-exchange funding spreads right now with APR.`,
+      `• *status* — Bot uptime, risk engine status, circuit breaker health, and today's realized PnL.`,
+      `• *help* — Displays this command and alert guide.`,
+      `• *test* — Runs a small test order to verify exchange APIs.`,
+      `• *flatten* — 🚨 Instant Emergency Stop: Cancels all orders and market-closes all positions to 100% USDT.\n`,
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+      `⚡ *Automated Trade Alerts (Sent By Bot):*\n`,
+      `1️⃣ *Pre-Trade Alert (T-10m before funding):*\n   Sent when all validations pass (margin, leverage, net positive profit).`,
+      `2️⃣ *Trade Entry Alert:*\n   Sent immediately when Binance and Bybit orders are filled and delta-neutral hedged.`,
+      `3️⃣ *Trade Close & PnL Alert (T+5s after settlement):*\n   Sent immediately after funding is collected and positions are closed flat.`,
+      `4️⃣ *Safety Alerts:*\n   Sent if margin rebalancing is needed or liquidation protection activates.\n`,
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+      `💡 _Tip: You do not need to type slash '/'. Just send_ \`next\`, \`wallet\`, _or_ \`top5\`!`
     ].join('\n');
 
     await this.telegramNotifier.sendMessage(msg);

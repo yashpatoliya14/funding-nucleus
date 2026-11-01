@@ -265,57 +265,7 @@ export class FundingArbitrageApp {
     }
   }
 
-  private async sendMarketAndPnLReport(trigger: 'STARTUP' | 'PERIODIC_4H', opportunities: any[]): Promise<void> {
-    const isStartup = trigger === 'STARTUP';
-    const title = isStartup ? 'Arbitrage Engine Online — Market & Profit Report' : '4-Hour Market & Performance Report';
-    const mode = this.config.appConfig.app.mode.toUpperCase();
-    const modeIcon = mode === 'LIVE' ? '🟢' : '🟡';
-
-    // Daily summary stats
-    const todaySummary = this.dailyRepo.getOrCreateToday();
-    const activeTrades = this.tradeRepo.getActiveTrades();
-
-    const top5 = opportunities.slice(0, 5);
-    const top5Lines = top5.map((opp, idx) => {
-      const coin = opp.mapping.normalized_symbol;
-      const edgePct = (parseFloat(opp.fundingDiffPct.toString())).toFixed(4);
-      const bRate = (parseFloat(opp.binanceRate.toString()) * 100).toFixed(4);
-      const byRate = (parseFloat(opp.bybitRate.toString()) * 100).toFixed(4);
-      const bSign = parseFloat(bRate) > 0 ? '+' : '';
-      const bySign = parseFloat(byRate) > 0 ? '+' : '';
-      const dirShort = opp.fundingDirection === 'SHORT_BINANCE_LONG_BYBIT' ? 'Short BI / Long BY' : 'Long BI / Short BY';
-      return `${idx + 1}. *${coin}* | Diff: \`${edgePct}%\`\n   • Dir: \`${dirShort}\`\n   • BI: \`${bSign}${bRate}%\` | BY: \`${bySign}${byRate}%\``;
-    });
-
-    const tradeableCount = opportunities.filter((o) => {
-      const minEdge = this.config.appConfig.strategy.minimum_funding_edge_pct;
-      return parseFloat(o.fundingDiffPct.toString()) >= minEdge;
-    }).length;
-
-    const netPnlNum = parseFloat(todaySummary.net_pnl_usd);
-    const pnlIcon = netPnlNum >= 0 ? '🟢' : '🔴';
-    const pnlSign = netPnlNum >= 0 ? '+' : '';
-
-    const lines = [
-      `${modeIcon} *System Mode:* \`${mode}\``,
-      `⏰ *Report Time:* \`${new Date().toISOString().replace('T', ' ').slice(0, 19)} UTC\``,
-      '',
-      `📊 *Top 5 Funding Discrepancies:*`,
-      top5Lines.length > 0 ? top5Lines.join('\n') : '   _No active matched pairs found._',
-      '',
-      `🎯 *Tradeable Opportunities:* \`${tradeableCount}\` pairs (Edge ≥ ${this.config.appConfig.strategy.minimum_funding_edge_pct}%)`,
-      `💼 *Active Open Trades:* \`${activeTrades.length}\``,
-      '',
-      `💰 *Performance Snapshot (Today):*`,
-      `• Trades Executed: \`${todaySummary.trade_count}\``,
-      `• Realized Funding: \`$${parseFloat(todaySummary.total_funding_pnl_usd).toFixed(2)}\``,
-      `• Realized Trading: \`$${parseFloat(todaySummary.total_trading_pnl_usd).toFixed(2)}\``,
-      `• Fees Paid: \`-$${parseFloat(todaySummary.total_fees_usd).toFixed(2)}\``,
-      `• ${pnlIcon} *Net Realized P&L:* \`${pnlSign}$${netPnlNum.toFixed(2)}\``,
-    ];
-
-    await this.telegram.sendAlert(title, lines.join('\n'), 'INFO');
-  }
+  
 
   async start(): Promise<void> {
     this.acquireLock();
@@ -338,13 +288,17 @@ export class FundingArbitrageApp {
     const isLive = this.config.appConfig.app.mode === 'live';
     const modeEmoji = isLive ? '🟢' : '🟡';
 
-    const marginVal = process.env.TRADE_MARGIN_PER_LEG_USD || '10';
     const startupMessage = [
-      `🤖 *Arbitrage Bot Online* (\`${modeStr}\`)`,
-      `• Pairs: \`${activeSymbols.length}\` perpetuals`,
-      `• Margin: \`$${marginVal} USDT\` @ \`${this.config.appConfig.risk.default_leverage_cap}x\``,
-      `• Min Spread Edge: \`${this.config.appConfig.strategy.minimum_funding_edge_pct}%\``,
-      `• Commands: \`next\`, \`wallet\`, \`top5\``,
+      `🤖 *Funding Arbitrage Bot Online* (\`${modeStr}\`)`,
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+      `💬 *Commands You Can Send:*\n`,
+      `• *next* — Next trade plan, margin & profit forecast`,
+      `• *wallet* — Binance & Bybit wallet balances & margin`,
+      `• *top5* — Top 5 highest funding rate spreads`,
+      `• *status* — System health & today's PnL`,
+      `• *help* — View full command & alert guide`,
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+      `_Scanning ${activeSymbols.length} perpetuals across Binance & Bybit..._`
     ].join('\n');
 
     await this.telegram.sendMessage(startupMessage);
@@ -368,11 +322,7 @@ export class FundingArbitrageApp {
         // 3. Scan funding rates
         const opportunities = await this.scanner.scanOpportunities(activeSymbols);
 
-        // Send startup report on first scan after restart (periodic 4h messages disabled as requested)
-        if (this.lastPeriodicReportTime === 0) {
-          this.lastPeriodicReportTime = Date.now();
-          await this.sendMarketAndPnLReport('STARTUP', opportunities);
-        }
+
 
         if (opportunities.length > 0) {
           const topOpp = opportunities[0]!;
