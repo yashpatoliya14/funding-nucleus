@@ -141,13 +141,6 @@ export class FundingArbitrageApp {
       chatId: config.env.TELEGRAM_CHAT_ID,
     });
 
-    this.marginMonitor = new MarginMonitor(
-      this.binanceClient,
-      this.bybitClient,
-      this.telegram,
-      config.appConfig.strategy.margin_rebalance_warning_usd
-    );
-
     // 7. Execution & Recovery
     const orderManager = new OrderManager(orderRepo);
     const reconciliation = new ExecutionReconciliation(this.binanceClient, this.bybitClient, fillRepo, snapshotRepo);
@@ -159,6 +152,16 @@ export class FundingArbitrageApp {
       riskRepo,
       config.appConfig
     );
+
+    this.marginMonitor = new MarginMonitor(
+      this.binanceClient,
+      this.bybitClient,
+      this.telegram,
+      config.appConfig.strategy.margin_rebalance_warning_usd,
+      1.50,
+      orderManager
+    );
+
     const stateMachine = new TradeStateMachine(this.tradeRepo, transitionRepo);
     this.executionEngine = new ExecutionEngine(
       this.binanceClient,
@@ -355,8 +358,9 @@ export class FundingArbitrageApp {
           continue;
         }
 
-        // 1. Proactively monitor margin balances across exchanges & alert on asymmetric drift
+        // 1. Proactively monitor margin balances & check for unhedged orphan positions (liquidation guard)
         await this.marginMonitor.checkMarginBalance();
+        await this.marginMonitor.checkAndRecoverOrphanPositions();
 
         // 2. Refresh symbol cache if expired
         const activeSymbols = await this.symbolCache.refreshIfExpired();

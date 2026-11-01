@@ -1,5 +1,6 @@
 import { IExchangeClient } from '../exchanges/exchange.interface.js';
 import { TelegramNotifier } from '../notifications/telegram.js';
+import { OrderManager } from '../execution/order-manager.js';
 import { logger } from '../utils/logger.js';
 
 export interface MarginStatus {
@@ -23,7 +24,8 @@ export class MarginMonitor {
     private bybitClient: IExchangeClient,
     private telegram?: TelegramNotifier,
     private warningThresholdUsd: number = 3.50,
-    private criticalThresholdUsd: number = 1.50
+    private criticalThresholdUsd: number = 1.50,
+    private orderManager?: OrderManager
   ) {}
 
   async checkMarginBalance(symbol?: string): Promise<MarginStatus> {
@@ -147,4 +149,110 @@ export class MarginMonitor {
 
     await this.telegram.sendMessage(msg);
   }
+
+  async checkAndRecoverOrphanPositions(): Promise<boolean> {
+    try {
+      const [binancePositions, bybitPositions] = await Promise.all([
+        this.binanceClient.getPositions(),
+        this.bybitClient.getPositions(),
+      ]);
+
+      const activeBi = binancePositions.filter((p) => p.side !== 'FLAT' && !p.quantity.isZero());
+      const activeBy = bybitPositions.filter((p) => p.side !== 'FLAT' && !p.quantity.isZero());
+
+      if (activeBi.length === 0 && activeBy.length === 0) {
+        return false;
+      }
+
+      // Check if Binance has orphan positions where Bybit has zero (e.g. Bybit was liquidated)
+      for (const bPos of activeBi) {
+        const match = activeBy.find((by) => by.symbol.toUpperCase() === bPos.symbol.toUpperCase());
+        if (!match || match.quantity.isZero() || match.side === 'FLAT') {
+          logger.error(
+            { symbol: bPos.symbol, side: bPos.side, qty: bPos.quantity.toString() },
+            'CRITICAL: Unhedged orphan position detected on Binance! Bybit leg is missing (liquidated or closed).'
+          );
+
+          if (this.orderManager) {
+            const closeSide = bPos.side === 'LONG' ? 'SELL' : 'BUY';
+            await this.orderManager.executeMarketOrder(
+              this.binanceClient,
+              `liq-orphan-${Date.now()}`,
+              bPos.symbol,
+              closeSide,
+              bPos.quantity,
+              'RECOVERY',
+              true
+            );
+          }
+
+          if (this.telegram) {
+            const msg = [
+              `🚨 *EMERGENCY: LIQUIDATION AUTO-PROTECTION* 🚨`,
+              ``,
+              `⚠️ *One of your position legs was liquidated or closed by the exchange!*`,
+              `• *Symbol:* \`${bPos.symbol}\``,
+              `• *Liquidated Leg:* *Bybit* (Position: \`0\`)`,
+              `• *Surviving Leg:* *Binance* (Position: \`${bPos.side} ${bPos.quantity.toString()}\`)`,
+              ``,
+              `⚡ *INSTANT SAFETY ACTION:*`,
+              `The bot immediately placed an **emergency reduce-only market close order** on *Binance* to eliminate unhedged directional exposure!`,
+              ``,
+              `🛡️ *Binance position has been flattened.*`,
+            ].join('\n');
+            await this.telegram.sendMessage(msg);
+          }
+          return true;
+        }
+      }
+
+      // Check if Bybit has orphan positions where Binance has zero (e.g. Binance was liquidated)
+      for (const byPos of activeBy) {
+        const match = activeBi.find((bi) => bi.symbol.toUpperCase() === byPos.symbol.toUpperCase());
+        if (!match || match.quantity.isZero() || match.side === 'FLAT') {
+          logger.error(
+            { symbol: byPos.symbol, side: byPos.side, qty: byPos.quantity.toString() },
+            'CRITICAL: Unhedged orphan position detected on Bybit! Binance leg is missing (liquidated or closed).'
+          );
+
+          if (this.orderManager) {
+            const closeSide = byPos.side === 'LONG' ? 'SELL' : 'BUY';
+            await this.orderManager.executeMarketOrder(
+              this.bybitClient,
+              `liq-orphan-${Date.now()}`,
+              byPos.symbol,
+              closeSide,
+              byPos.quantity,
+              'RECOVERY',
+              true
+            );
+          }
+
+          if (this.telegram) {
+            const msg = [
+              `🚨 *EMERGENCY: LIQUIDATION AUTO-PROTECTION* 🚨`,
+              ``,
+              `⚠️ *One of your position legs was liquidated or closed by the exchange!*`,
+              `• *Symbol:* \`${byPos.symbol}\``,
+              `• *Liquidated Leg:* *Binance* (Position: \`0\`)`,
+              `• *Surviving Leg:* *Bybit* (Position: \`${byPos.side} ${byPos.quantity.toString()}\`)`,
+              ``,
+              `⚡ *INSTANT SAFETY ACTION:*`,
+              `The bot immediately placed an **emergency reduce-only market close order** on *Bybit* to eliminate unhedged directional exposure!`,
+              ``,
+              `🛡️ *Bybit position has been flattened.*`,
+            ].join('\n');
+            await this.telegram.sendMessage(msg);
+          }
+          return true;
+        }
+      }
+
+      return false;
+    } catch (err: any) {
+      logger.error({ err: err?.message }, 'Failed to check and recover orphan positions');
+      return false;
+    }
+  }
 }
+

@@ -233,14 +233,80 @@ export class ExecutionEngine {
 
         if (waitTimeMs > 0) {
           if (!isSimulated) {
-            // In live mode: wait in periodic chunks while actively monitoring margin
+            // In live mode: wait in 5-second periodic chunks while actively monitoring for liquidation & margin drift
             let remainingMs = waitTimeMs;
             while (remainingMs > 0) {
-              const sleepChunk = Math.min(remainingMs, 30000);
+              const sleepChunk = Math.min(remainingMs, 5000);
               await sleep(sleepChunk);
               remainingMs -= sleepChunk;
 
-              // Proactively check margin balance and send rebalance alerts if needed
+              // 1. LIQUIDATION & ONE-LEG FAILURE GUARD
+              // If user missed the margin rebalance alert and one leg gets liquidated or closed by exchange,
+              // immediately auto-exit on the surviving leg to eliminate unhedged directional exposure!
+              const recon = await this.reconciliation.reconcilePositions(tradeId, bSymbol, bySymbol);
+              if (recon.oneLegFailed) {
+                const liquidatedExchange = recon.binanceExecutedQty.isZero() ? 'Binance' : 'Bybit';
+                const survivingExchange = liquidatedExchange === 'Binance' ? 'Bybit' : 'Binance';
+                const survivingQty = liquidatedExchange === 'Binance' ? recon.bybitExecutedQty : recon.binanceExecutedQty;
+
+                logger.error(
+                  { tradeId, coin, liquidatedExchange, survivingExchange, survivingQty: survivingQty.toString() },
+                  `CRITICAL: ${liquidatedExchange} position was liquidated or closed by exchange! Auto-closing ${survivingExchange} immediately.`
+                );
+
+                if (this.telegram) {
+                  const alertMsg = [
+                    `🚨 *EMERGENCY: LIQUIDATION AUTO-PROTECTION* 🚨`,
+                    ``,
+                    `⚠️ *One of your trade legs was liquidated or closed by the exchange!*`,
+                    `• *Pair:* \`${coin}\``,
+                    `• *Liquidated Leg:* *${liquidatedExchange}* (Position: \`0\`)`,
+                    `• *Surviving Leg:* *${survivingExchange}* (Open Qty: \`${survivingQty.toString()}\`)`,
+                    ``,
+                    `⚡ *INSTANT ACTION TAKEN:*`,
+                    `The bot detected the missing leg and immediately executed an **emergency market close** on *${survivingExchange}* to prevent catastrophic directional market losses!`,
+                    ``,
+                    `🛡️ *Both exchanges are now flat.*`,
+                  ].join('\n');
+                  await this.telegram.sendMessage(alertMsg);
+                }
+
+                // Immediately flatten the surviving leg
+                await this.hedgeRecovery.flattenAllLegs(
+                  tradeId,
+                  bSymbol,
+                  bySymbol,
+                  `Emergency auto-close: ${liquidatedExchange} was liquidated`
+                );
+
+                currentState = this.stateMachine.transition(
+                  tradeId,
+                  currentState,
+                  'EMERGENCY',
+                  `One leg liquidated on ${liquidatedExchange}`
+                );
+                currentState = this.stateMachine.transition(
+                  tradeId,
+                  currentState,
+                  'FLAT_VERIFICATION',
+                  'Verified flat after liquidation recovery'
+                );
+                this.stateMachine.transition(
+                  tradeId,
+                  currentState,
+                  'FAILED',
+                  `Terminated: ${liquidatedExchange} leg liquidated, ${survivingExchange} auto-closed`
+                );
+
+                this.tradeRepo.update({
+                  id: tradeId,
+                  error_message: `Emergency exit: ${liquidatedExchange} was liquidated. Surviving ${survivingExchange} leg closed immediately.`,
+                });
+
+                return this.tradeRepo.getById(tradeId)!;
+              }
+
+              // 2. PROACTIVE MARGIN DRIFT MONITOR
               if (this.marginMonitor) {
                 const marginStatus = await this.marginMonitor.checkMarginBalance(coin);
                 if (marginStatus.isCritical) {

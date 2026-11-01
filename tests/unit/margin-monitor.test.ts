@@ -70,4 +70,93 @@ describe('MarginMonitor', () => {
     expect(sentMessages.length).toBe(1);
     expect(sentMessages[0]).toContain('🚨 *MARGIN REBALANCE ALERT*');
   });
+
+  it('detects unhedged orphan leg when Bybit is liquidated and auto-closes Binance immediately', async () => {
+    const mockOrderManager = {
+      executeMarketOrder: vi.fn().mockResolvedValue({
+        clientOrderId: 'test-close',
+        exchangeOrderId: 'sim-1',
+        status: 'FILLED',
+      }),
+    } as any;
+
+    // Simulate Binance having open LONG of 0.01 BTC while Bybit has 0 (liquidated)
+    vi.spyOn(binanceClient, 'getPositions').mockResolvedValueOnce([
+      {
+        exchange: 'binance',
+        symbol: 'BTCUSDT',
+        side: 'LONG',
+        quantity: toDecimal('0.01'),
+        entryPrice: toDecimal('65000'),
+        markPrice: toDecimal('65000'),
+        unrealizedPnl: toDecimal('0'),
+        leverage: 5,
+        updatedAtMs: Date.now(),
+      },
+    ]);
+    vi.spyOn(bybitClient, 'getPositions').mockResolvedValueOnce([]); // Liquidated on Bybit
+
+    const monitor = new MarginMonitor(binanceClient, bybitClient, telegram, 3.50, 1.50, mockOrderManager);
+    const recovered = await monitor.checkAndRecoverOrphanPositions();
+
+    expect(recovered).toBe(true);
+    expect(mockOrderManager.executeMarketOrder).toHaveBeenCalledWith(
+      binanceClient,
+      expect.stringContaining('liq-orphan'),
+      'BTCUSDT',
+      'SELL', // Opposing side to close LONG
+      toDecimal('0.01'),
+      'RECOVERY',
+      true
+    );
+    expect(sentMessages.length).toBe(1);
+    expect(sentMessages[0]).toContain('EMERGENCY: LIQUIDATION AUTO-PROTECTION');
+    expect(sentMessages[0]).toContain('Liquidated Leg:* *Bybit*');
+    expect(sentMessages[0]).toContain('Surviving Leg:* *Binance*');
+  });
+
+  it('detects unhedged orphan leg when Binance is liquidated and auto-closes Bybit immediately', async () => {
+    const mockOrderManager = {
+      executeMarketOrder: vi.fn().mockResolvedValue({
+        clientOrderId: 'test-close',
+        exchangeOrderId: 'sim-2',
+        status: 'FILLED',
+      }),
+    } as any;
+
+    // Simulate Bybit having open SHORT of 0.01 BTC while Binance has 0 (liquidated)
+    vi.spyOn(binanceClient, 'getPositions').mockResolvedValueOnce([]); // Liquidated on Binance
+    vi.spyOn(bybitClient, 'getPositions').mockResolvedValueOnce([
+      {
+        exchange: 'bybit',
+        symbol: 'BTCUSDT',
+        side: 'SHORT',
+        quantity: toDecimal('0.01'),
+        entryPrice: toDecimal('65000'),
+        markPrice: toDecimal('65000'),
+        unrealizedPnl: toDecimal('0'),
+        leverage: 5,
+        updatedAtMs: Date.now(),
+      },
+    ]);
+
+    const monitor = new MarginMonitor(binanceClient, bybitClient, telegram, 3.50, 1.50, mockOrderManager);
+    const recovered = await monitor.checkAndRecoverOrphanPositions();
+
+    expect(recovered).toBe(true);
+    expect(mockOrderManager.executeMarketOrder).toHaveBeenCalledWith(
+      bybitClient,
+      expect.stringContaining('liq-orphan'),
+      'BTCUSDT',
+      'BUY', // Opposing side to close SHORT
+      toDecimal('0.01'),
+      'RECOVERY',
+      true
+    );
+    expect(sentMessages.length).toBe(1);
+    expect(sentMessages[0]).toContain('EMERGENCY: LIQUIDATION AUTO-PROTECTION');
+    expect(sentMessages[0]).toContain('Liquidated Leg:* *Binance*');
+    expect(sentMessages[0]).toContain('Surviving Leg:* *Bybit*');
+  });
 });
+
