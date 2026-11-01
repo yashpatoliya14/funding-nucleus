@@ -37,6 +37,7 @@ import { TelegramNotifier } from './notifications/telegram.js';
 import { TelegramCommander } from './notifications/telegram-commander.js';
 import { SystemHealth } from './monitoring/health.js';
 import { MetricsCollector } from './monitoring/metrics.js';
+import { MarginMonitor } from './risk/margin-monitor.js';
 import { logger } from './utils/logger.js';
 import { sleep } from './utils/time.js';
 
@@ -51,6 +52,7 @@ export class FundingArbitrageApp {
   private riskManager: RiskManager;
   private circuitBreaker: CircuitBreaker;
   private killSwitch: KillSwitch;
+  private marginMonitor: MarginMonitor;
   private executionEngine: ExecutionEngine;
   private telegram: TelegramNotifier;
   private telegramCommander?: TelegramCommander;
@@ -132,7 +134,14 @@ export class FundingArbitrageApp {
       config.appConfig
     );
 
-    // 6. Execution & Recovery
+    // 6. Notifications & Monitoring
+    this.telegram = new TelegramNotifier({
+      enabled: config.appConfig.monitoring.telegram_enabled,
+      botToken: config.env.TELEGRAM_BOT_TOKEN,
+      chatId: config.env.TELEGRAM_CHAT_ID,
+    });
+
+    // 7. Execution & Recovery
     const orderManager = new OrderManager(orderRepo);
     const reconciliation = new ExecutionReconciliation(this.binanceClient, this.bybitClient, fillRepo, snapshotRepo);
     const hedgeRecovery = new HedgeRecovery(
@@ -143,6 +152,16 @@ export class FundingArbitrageApp {
       riskRepo,
       config.appConfig
     );
+
+    this.marginMonitor = new MarginMonitor(
+      this.binanceClient,
+      this.bybitClient,
+      this.telegram,
+      config.appConfig.strategy.margin_rebalance_warning_usd,
+      1.50,
+      orderManager
+    );
+
     const stateMachine = new TradeStateMachine(this.tradeRepo, transitionRepo);
     this.executionEngine = new ExecutionEngine(
       this.binanceClient,
@@ -155,15 +174,10 @@ export class FundingArbitrageApp {
       fundingEventRepo,
       fundingTxRepo,
       dailyRepo,
-      config.appConfig
+      config.appConfig,
+      this.marginMonitor,
+      this.telegram
     );
-
-    // 7. Notifications & Monitoring
-    this.telegram = new TelegramNotifier({
-      enabled: config.appConfig.monitoring.telegram_enabled,
-      botToken: config.env.TELEGRAM_BOT_TOKEN,
-      chatId: config.env.TELEGRAM_CHAT_ID,
-    });
 
     if (config.appConfig.monitoring.telegram_enabled && config.env.TELEGRAM_BOT_TOKEN && config.env.TELEGRAM_CHAT_ID) {
       this.telegramCommander = new TelegramCommander({
@@ -344,10 +358,14 @@ export class FundingArbitrageApp {
           continue;
         }
 
-        // 1. Refresh symbol cache if expired
+        // 1. Proactively monitor margin balances & check for unhedged orphan positions (liquidation guard)
+        await this.marginMonitor.checkMarginBalance();
+        await this.marginMonitor.checkAndRecoverOrphanPositions();
+
+        // 2. Refresh symbol cache if expired
         const activeSymbols = await this.symbolCache.refreshIfExpired();
 
-        // 2. Scan funding rates
+        // 3. Scan funding rates
         const opportunities = await this.scanner.scanOpportunities(activeSymbols);
 
         // Send startup report on first scan after restart (periodic 4h messages disabled as requested)

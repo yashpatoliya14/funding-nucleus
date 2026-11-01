@@ -31,6 +31,16 @@ strategy:
   # Minimum required funding spread: 0.15% (164.25% Annualized APR) to guarantee pure profit after all fees
   minimum_funding_edge_pct: 0.10
 
+  # Cumulative carry holding: hold across cycles to collect multi-cycle funding and avoid repeat exit & entry fees
+  cumulative_carry_enabled: true
+
+  # Minimum spread edge required in subsequent cycles to CONTINUE holding (0.05%)
+  # If spread falls below this or inverts, the bot automatically exits and locks in profits
+  carry_min_retention_edge_pct: 0.05
+
+  # Margin rebalance alert threshold (USD): if available margin on either exchange drops below this, alert immediately
+  margin_rebalance_warning_usd: 3.50
+
   # Additional safety buffer for margin & fee variations (adjusted to 0.02 for $50 test trades)
   risk_buffer_usd: 0.02
 

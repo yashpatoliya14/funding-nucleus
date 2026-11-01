@@ -16,6 +16,8 @@ import { AppConfig } from '../config/schema.js';
 import { Decimal, toDecimal } from '../utils/decimal.js';
 import { logger } from '../utils/logger.js';
 import { sleep } from '../utils/time.js';
+import { MarginMonitor } from '../risk/margin-monitor.js';
+import { TelegramNotifier } from '../notifications/telegram.js';
 
 export class ExecutionEngine {
   constructor(
@@ -29,7 +31,9 @@ export class ExecutionEngine {
     private fundingEventRepo: FundingEventRepository,
     private fundingTxRepo: FundingTransactionRepository,
     private dailyRepo: DailySummaryRepository,
-    private config: AppConfig
+    private config: AppConfig,
+    private marginMonitor?: MarginMonitor,
+    private telegram?: TelegramNotifier
   ) {}
 
   async executeTrade(candidate: EvaluatedOpportunity, isSimulated: boolean = true): Promise<DbTrade> {
@@ -210,47 +214,233 @@ export class ExecutionEngine {
         'Holding positions until funding settlement epoch'
       );
 
-      // In paper mode or live mode, wait until target exit (funding timestamp + target_exit_delay_seconds)
-      const targetFundingMs = candidate.opportunity.targetFundingTimeMs;
-      const exitDelayMs = this.config.strategy.target_exit_delay_seconds * 1000;
-      const exitTimeMs = targetFundingMs + exitDelayMs;
-      const waitTimeMs = Math.max(0, exitTimeMs - Date.now());
-
-      logger.info({ tradeId, waitTimeMs, exitDelaySeconds: this.config.strategy.target_exit_delay_seconds }, 'Waiting for funding settlement');
-      
-      // In live mode, we MUST sleep until the funding epoch has passed to collect funding!
-      // In simulated/paper mode during tests, cap wait time if funding is far in the future
-      if (waitTimeMs > 0) {
-        if (!isSimulated) {
-          await sleep(waitTimeMs);
-        } else if (waitTimeMs < 10000) {
-          await sleep(waitTimeMs);
-        }
-      }
-
-      // 7. Transition to FUNDING_RECONCILIATION
-      currentState = this.stateMachine.transition(
-        tradeId,
-        currentState,
-        'FUNDING_RECONCILIATION',
-        'Querying funding settlement transactions'
-      );
-
-      // Retrieve actual funding records
-      const bFundingHistory = await this.binanceClient.getFundingHistory(bSymbol);
-      const byFundingHistory = await this.bybitClient.getFundingHistory(bySymbol);
-
+      let cycleCount = 0;
       let totalFundingReceived = toDecimal('0');
-      for (const f of bFundingHistory) {
-        totalFundingReceived = totalFundingReceived.plus(f.paymentAmount);
-      }
-      for (const f of byFundingHistory) {
-        totalFundingReceived = totalFundingReceived.plus(f.paymentAmount);
-      }
+      let targetFundingMs = candidate.opportunity.targetFundingTimeMs;
+      const isCarryEnabled = this.config.strategy.cumulative_carry_enabled;
+      const minRetentionEdge = this.config.strategy.carry_min_retention_edge_pct;
+      const exitDelayMs = this.config.strategy.target_exit_delay_seconds * 1000;
 
-      // If simulated or no records yet returned, use calculated funding
-      if (isSimulated && totalFundingReceived.isZero()) {
-        totalFundingReceived = candidate.profitability.netFundingCashFlow;
+      while (true) {
+        cycleCount++;
+        const exitTimeMs = targetFundingMs + exitDelayMs;
+        const waitTimeMs = Math.max(0, exitTimeMs - Date.now());
+
+        logger.info(
+          { tradeId, cycleCount, waitTimeMs, exitDelaySeconds: this.config.strategy.target_exit_delay_seconds },
+          `Holding positions for cycle ${cycleCount} funding settlement`
+        );
+
+        if (waitTimeMs > 0) {
+          if (!isSimulated) {
+            // In live mode: wait in 5-second periodic chunks while actively monitoring for liquidation & margin drift
+            let remainingMs = waitTimeMs;
+            while (remainingMs > 0) {
+              const sleepChunk = Math.min(remainingMs, 5000);
+              await sleep(sleepChunk);
+              remainingMs -= sleepChunk;
+
+              // 1. LIQUIDATION & ONE-LEG FAILURE GUARD
+              // If user missed the margin rebalance alert and one leg gets liquidated or closed by exchange,
+              // immediately auto-exit on the surviving leg to eliminate unhedged directional exposure!
+              const recon = await this.reconciliation.reconcilePositions(tradeId, bSymbol, bySymbol);
+              if (recon.oneLegFailed) {
+                const liquidatedExchange = recon.binanceExecutedQty.isZero() ? 'Binance' : 'Bybit';
+                const survivingExchange = liquidatedExchange === 'Binance' ? 'Bybit' : 'Binance';
+                const survivingQty = liquidatedExchange === 'Binance' ? recon.bybitExecutedQty : recon.binanceExecutedQty;
+
+                logger.error(
+                  { tradeId, coin, liquidatedExchange, survivingExchange, survivingQty: survivingQty.toString() },
+                  `CRITICAL: ${liquidatedExchange} position was liquidated or closed by exchange! Auto-closing ${survivingExchange} immediately.`
+                );
+
+                if (this.telegram) {
+                  const alertMsg = [
+                    `🚨 *EMERGENCY: LIQUIDATION AUTO-PROTECTION* 🚨`,
+                    ``,
+                    `⚠️ *One of your trade legs was liquidated or closed by the exchange!*`,
+                    `• *Pair:* \`${coin}\``,
+                    `• *Liquidated Leg:* *${liquidatedExchange}* (Position: \`0\`)`,
+                    `• *Surviving Leg:* *${survivingExchange}* (Open Qty: \`${survivingQty.toString()}\`)`,
+                    ``,
+                    `⚡ *INSTANT ACTION TAKEN:*`,
+                    `The bot detected the missing leg and immediately executed an **emergency market close** on *${survivingExchange}* to prevent catastrophic directional market losses!`,
+                    ``,
+                    `🛡️ *Both exchanges are now flat.*`,
+                  ].join('\n');
+                  await this.telegram.sendMessage(alertMsg);
+                }
+
+                // Immediately flatten the surviving leg
+                await this.hedgeRecovery.flattenAllLegs(
+                  tradeId,
+                  bSymbol,
+                  bySymbol,
+                  `Emergency auto-close: ${liquidatedExchange} was liquidated`
+                );
+
+                currentState = this.stateMachine.transition(
+                  tradeId,
+                  currentState,
+                  'EMERGENCY',
+                  `One leg liquidated on ${liquidatedExchange}`
+                );
+                currentState = this.stateMachine.transition(
+                  tradeId,
+                  currentState,
+                  'FLAT_VERIFICATION',
+                  'Verified flat after liquidation recovery'
+                );
+                this.stateMachine.transition(
+                  tradeId,
+                  currentState,
+                  'FAILED',
+                  `Terminated: ${liquidatedExchange} leg liquidated, ${survivingExchange} auto-closed`
+                );
+
+                this.tradeRepo.update({
+                  id: tradeId,
+                  error_message: `Emergency exit: ${liquidatedExchange} was liquidated. Surviving ${survivingExchange} leg closed immediately.`,
+                });
+
+                return this.tradeRepo.getById(tradeId)!;
+              }
+
+              // 2. PROACTIVE MARGIN DRIFT MONITOR
+              if (this.marginMonitor) {
+                const marginStatus = await this.marginMonitor.checkMarginBalance(coin);
+                if (marginStatus.isCritical) {
+                  logger.warn(
+                    { tradeId, marginStatus },
+                    'Critical margin threshold breached during carry hold! Breaking carry loop to close positions'
+                  );
+                  break;
+                }
+              }
+            }
+          } else if (waitTimeMs < 10000) {
+            await sleep(waitTimeMs);
+          }
+        }
+
+        // 7. Transition to FUNDING_RECONCILIATION
+        currentState = this.stateMachine.transition(
+          tradeId,
+          currentState,
+          'FUNDING_RECONCILIATION',
+          `Querying funding settlement transactions (Cycle ${cycleCount})`
+        );
+
+        // Retrieve actual funding records
+        const bFundingHistory = await this.binanceClient.getFundingHistory(bSymbol);
+        const byFundingHistory = await this.bybitClient.getFundingHistory(bySymbol);
+
+        let cycleFunding = toDecimal('0');
+        for (const f of bFundingHistory) {
+          cycleFunding = cycleFunding.plus(f.paymentAmount);
+        }
+        for (const f of byFundingHistory) {
+          cycleFunding = cycleFunding.plus(f.paymentAmount);
+        }
+
+        // If simulated or no records yet returned, use calculated funding
+        if (isSimulated && cycleFunding.isZero()) {
+          cycleFunding = candidate.profitability.netFundingCashFlow;
+        }
+
+        totalFundingReceived = totalFundingReceived.plus(cycleFunding);
+
+        logger.info(
+          { tradeId, cycleCount, cycleFunding: cycleFunding.toFixed(4), totalFunding: totalFundingReceived.toFixed(4) },
+          'Funding collected for cycle'
+        );
+
+        // In simulation, only execute 1 cycle unless configured
+        if (!isCarryEnabled || isSimulated || cycleCount >= 6) {
+          if (cycleCount >= 6) {
+            logger.info({ tradeId, cycleCount }, 'Max carry cycles reached (6 cycles / 48h). Closing positions.');
+          }
+          break;
+        }
+
+        // Check margin status before deciding to extend carry
+        if (this.marginMonitor) {
+          const marginStatus = await this.marginMonitor.checkMarginBalance(coin);
+          if (marginStatus.needsRebalance && marginStatus.isCritical) {
+            logger.warn({ tradeId }, 'Margin status critical, ending carry to protect margin.');
+            break;
+          }
+        }
+
+        // Evaluate next cycle funding edge
+        try {
+          const [bRates, byRates] = await Promise.all([
+            this.binanceClient.getFundingRates(),
+            this.bybitClient.getFundingRates(),
+          ]);
+
+          const bInfo = bRates.find((r) => r.symbol === bSymbol);
+          const byInfo = byRates.find((r) => r.symbol === bySymbol);
+
+          if (!bInfo || !byInfo) {
+            logger.info({ tradeId }, 'Could not locate next funding rates for carry evaluation. Closing positions.');
+            break;
+          }
+
+          const dir = candidate.profitability.direction;
+          const nextSpreadPct =
+            dir === 'SHORT_BINANCE_LONG_BYBIT'
+              ? bInfo.fundingRate.minus(byInfo.fundingRate).times(100).toNumber()
+              : byInfo.fundingRate.minus(bInfo.fundingRate).times(100).toNumber();
+
+          if (nextSpreadPct >= minRetentionEdge) {
+            logger.info(
+              { tradeId, nextSpreadPct, minRetentionEdge, cycleCount },
+              'Next cycle funding edge exceeds retention threshold. Carrying positions over!'
+            );
+
+            if (this.telegram) {
+              const dirShort = dir === 'SHORT_BINANCE_LONG_BYBIT' ? 'Short BI / Long BY' : 'Long BI / Short BY';
+              const carryMsg = [
+                `🔄 *CUMULATIVE CARRY EXTENSION (Cycle ${cycleCount + 1})*`,
+                `• *Pair:* \`${coin}\` (\`${dirShort}\`)`,
+                `• *Next Spread:* \`+${nextSpreadPct.toFixed(4)}%\` (Min: \`${minRetentionEdge}%\`)`,
+                `• *Cumulative Funding So Far:* \`+$${totalFundingReceived.toFixed(3)} USDT\``,
+                `• *Zero Friction:* Holding position avoids duplicate taker fees!`,
+              ].join('\n');
+              await this.telegram.sendMessage(carryMsg);
+            }
+
+            // Update target funding time for next cycle
+            targetFundingMs = Math.min(bInfo.fundingTimeMs, byInfo.fundingTimeMs);
+            if (targetFundingMs <= Date.now()) {
+              targetFundingMs = Date.now() + 8 * 3600 * 1000;
+            }
+
+            // Transition back to WAITING_FOR_FUNDING for the next cycle
+            currentState = this.stateMachine.transition(
+              tradeId,
+              currentState,
+              'WAITING_FOR_FUNDING',
+              `Retaining carry position for cycle ${cycleCount + 1}`
+            );
+            continue;
+          } else {
+            logger.info(
+              { tradeId, nextSpreadPct, minRetentionEdge },
+              'Next cycle funding edge below retention threshold. Concluding carry and closing.'
+            );
+            if (this.telegram && cycleCount > 1) {
+              await this.telegram.sendMessage(
+                `🏁 *Carry Complete:* Next spread for \`${coin}\` dropped to \`${nextSpreadPct.toFixed(4)}%\` (< \`${minRetentionEdge}%\`). Closing positions across ${cycleCount} settled cycles.`
+              );
+            }
+            break;
+          }
+        } catch (fetchErr: any) {
+          logger.warn({ tradeId, err: fetchErr?.message }, 'Failed to query next funding rates for carry evaluation. Closing.');
+          break;
+        }
       }
 
       // 8. Transition to EXIT_PENDING -> CLOSING_POSITIONS
