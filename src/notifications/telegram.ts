@@ -119,6 +119,87 @@ export class TelegramNotifier {
     }
   }
 
+  /**
+   * Registers bot slash commands with Telegram Bot API so they appear in autocomplete & menu button.
+   */
+  async registerBotCommands(): Promise<boolean> {
+    if (!this.enabled || !this.botToken) return false;
+
+    const commands = [
+      { command: 'dashboard', description: '📊 Top 10 Spreads, 7D Stats & 5x Trade Buttons' },
+      { command: 'trade', description: '⚡ Open 5x Trade (e.g. /trade AKE 10)' },
+      { command: 'history', description: '📈 7-Day Funding Rate Analytics (e.g. /history BTC)' },
+      { command: 'wallet', description: '💼 Binance & Bybit Balances & Margin' },
+      { command: 'top5', description: '📊 Top 5 Funding Spreads with APR' },
+      { command: 'next', description: '🎯 Next Planned Trade Forecast & Timing' },
+      { command: 'status', description: '🤖 Bot Health, Execution Mode & Net PnL' },
+      { command: 'freeze', description: '❄️ Freeze Auto-Trade (Manual Only)' },
+      { command: 'unfreeze', description: '🟢 Unfreeze Auto-Trade (Autonomous)' },
+      { command: 'flatten', description: '🚨 Emergency Stop: Flatten All Positions (100% USDT)' },
+      { command: 'help', description: '❓ Complete Command List & Usage Guide' },
+    ];
+
+    try {
+      const url = `https://api.telegram.org/bot${this.botToken}/setMyCommands`;
+      const res = await request(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ commands }),
+      });
+      logger.info({ statusCode: res.statusCode }, 'Registered bot commands with Telegram API');
+      return res.statusCode === 200;
+    } catch (err: any) {
+      logger.warn({ err: err?.message }, 'Failed to register bot commands with Telegram');
+      return false;
+    }
+  }
+
+  /**
+   * Sets the Telegram chat menu button to show the commands list.
+   */
+  async setCommandsMenuButton(): Promise<boolean> {
+    if (!this.enabled || !this.botToken) return false;
+    try {
+      const url = `https://api.telegram.org/bot${this.botToken}/setChatMenuButton`;
+      const res = await request(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ menu_button: { type: 'commands' } }),
+      });
+      return res.statusCode === 200;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Returns a persistent Telegram reply keyboard with one-tap action buttons.
+   */
+  public getDefaultReplyKeyboard(): any {
+    return {
+      keyboard: [
+        [
+          { text: '📊 Dashboard (Top 10)' },
+          { text: '🎯 Next Planned Trade' },
+        ],
+        [
+          { text: '💼 Wallet Balances' },
+          { text: '🤖 Bot Status' },
+        ],
+        [
+          { text: '❄️ Freeze Auto-Trade' },
+          { text: '🟢 Unfreeze Auto-Trade' },
+        ],
+        [
+          { text: '🚨 Emergency Flatten' },
+          { text: '❓ Help & Commands' },
+        ],
+      ],
+      resize_keyboard: true,
+      is_persistent: true,
+    };
+  }
+
   private isCriticalEvent(eventType: TelegramEventType): boolean {
     const critical: TelegramEventType[] = [
       'ONE_LEG_FAILURE',
