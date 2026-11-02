@@ -40,7 +40,6 @@ import { MetricsCollector } from './monitoring/metrics.js';
 import { MarginMonitor } from './risk/margin-monitor.js';
 import { LiquidationSentinel } from './risk/liquidation-sentinel.js';
 import { FundingHistoryService } from './analytics/funding-history.service.js';
-import { ManualTradeService } from './execution/manual-trade.service.js';
 import { logger } from './utils/logger.js';
 import { sleep } from './utils/time.js';
 
@@ -58,7 +57,6 @@ export class FundingArbitrageApp {
   private marginMonitor: MarginMonitor;
   private sentinel: LiquidationSentinel;
   private historyService: FundingHistoryService;
-  private manualTradeService: ManualTradeService;
   private executionEngine: ExecutionEngine;
   private telegram: TelegramNotifier;
   private telegramCommander?: TelegramCommander;
@@ -196,15 +194,6 @@ export class FundingArbitrageApp {
       checkIntervalMs: 3000,
       minEmergencyMarginUsd: 2.0,
     });
-    this.manualTradeService = new ManualTradeService(
-      this.binanceClient,
-      this.bybitClient,
-      this.symbolCache,
-      this.executionEngine,
-      this.telegram,
-      config.appConfig
-    );
-
     if (config.appConfig.monitoring.telegram_enabled && config.env.TELEGRAM_BOT_TOKEN && config.env.TELEGRAM_CHAT_ID) {
       this.telegramCommander = new TelegramCommander({
         botToken: config.env.TELEGRAM_BOT_TOKEN,
@@ -228,7 +217,6 @@ export class FundingArbitrageApp {
         defaultLeverageCap: 5,
         minFundingEdgePct: config.appConfig.strategy.minimum_funding_edge_pct || 0.15,
         historyService: this.historyService,
-        manualTradeService: this.manualTradeService,
         sentinel: this.sentinel,
         symbolCache: this.symbolCache,
         isAutoExecutionFrozen: () => this.isAutoExecutionFrozen,
@@ -330,8 +318,7 @@ export class FundingArbitrageApp {
       `🛡️ *Liquidation Sentinel:* \`Active (Instant Flatten on 1-Leg Liquidation / Margin Drop)\``,
       `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
       `💬 *Interactive Telegram Commands:*\n`,
-      `• *dashboard* — Live Top 10 Dashboard with interactive 5x trade buttons`,
-      `• *trade <pair> <margin>* — Instant 5x simultaneous trade (e.g. \`trade AKE 10\`)`,
+      `• *dashboard* — Live Top 10 Dashboard with funding spreads and 7-day stats`,
       `• *7d <pair>* — 7-day historical funding rate performance & edge`,
       `• *freeze* / *unfreeze* — Toggle automatic trade execution`,
       `• *next* — Next trade plan, margin & profit forecast`,

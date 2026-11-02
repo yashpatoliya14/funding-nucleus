@@ -126,9 +126,8 @@ export class TelegramNotifier {
     if (!this.enabled || !this.botToken) return false;
 
     const commands = [
-      { command: 'dashboard', description: '📊 Top 10 Spreads, 7D Stats & 5x Trade Buttons' },
+      { command: 'dashboard', description: '📊 Top 10 Spreads & 7D Stats' },
       { command: 'top10', description: '📊 Top 10 Funding Spreads & Analytics' },
-      { command: 'trade', description: '⚡ Open 5x Trade (e.g. /trade AKE 10)' },
       { command: 'history', description: '📈 7-Day Funding Rate Analytics (e.g. /history BTC)' },
       { command: 'wallet', description: '💼 Binance & Bybit Balances & Margin' },
       { command: 'next', description: '🎯 Next Planned Trade Forecast & Timing' },
@@ -183,7 +182,6 @@ export class TelegramNotifier {
           { text: '📈 Funding Spreads' },
         ],
         [
-          { text: '⚡ Manual Trade' },
           { text: '🗓️ 7-Day History' },
         ],
         [

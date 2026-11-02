@@ -14,7 +14,7 @@ import {
 } from '../../src/persistence/repositories.js';
 import { toDecimal } from '../../src/utils/decimal.js';
 
-describe('Integration Tests: Telegram Interactive Dashboard & 5x Trading', () => {
+describe('Integration Tests: Telegram Interactive Dashboard & Monitoring', () => {
   let dispatchedMessages: { text: string; markup?: any }[] = [];
   let notifier: TelegramNotifier;
   let binanceClient: PaperClient;
@@ -123,7 +123,6 @@ describe('Integration Tests: Telegram Interactive Dashboard & 5x Trading', () =>
     expect(buttons).toEqual([
       '📊 Top 10 Dashboard',
       '📈 Funding Spreads',
-      '⚡ Manual Trade',
       '🗓️ 7-Day History',
       '🎯 Next Trade Plan',
       '💼 Wallet & Margin',
@@ -134,6 +133,14 @@ describe('Integration Tests: Telegram Interactive Dashboard & 5x Trading', () =>
       '🚨 Emergency Flatten',
       '❓ Help & Commands',
     ]);
+  });
+
+  it('does not execute trades from the Telegram command', async () => {
+    await (commander as any).handleMessage('/trade AKE 10');
+
+    expect(dispatchedMessages[dispatchedMessages.length - 1]!.text).toContain('Manual trade execution from Telegram is disabled');
+    expect((await binanceClient.getPositions()).every((position) => position.quantity.isZero())).toBe(true);
+    expect((await bybitClient.getPositions()).every((position) => position.quantity.isZero())).toBe(true);
   });
 
   it('routes the current trade details button to the positions view', async () => {

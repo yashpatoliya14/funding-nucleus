@@ -8,7 +8,6 @@ import { CircuitBreaker } from '../risk/circuit-breaker.js';
 import { KillSwitch } from '../risk/kill-switch.js';
 import { executeTestOrder } from '../execution/test-order-executor.js';
 import { FundingHistoryService, SevenDayFundingStats } from '../analytics/funding-history.service.js';
-import { ManualTradeService } from '../execution/manual-trade.service.js';
 import { LiquidationSentinel } from '../risk/liquidation-sentinel.js';
 import { SymbolCache } from '../market-data/symbol-cache.js';
 
@@ -29,7 +28,6 @@ export interface TelegramCommanderOptions {
   defaultLeverageCap?: number;
   minFundingEdgePct?: number;
   historyService?: FundingHistoryService;
-  manualTradeService?: ManualTradeService;
   sentinel?: LiquidationSentinel;
   symbolCache?: SymbolCache;
   isAutoExecutionFrozen?: () => boolean;
@@ -54,7 +52,6 @@ export class TelegramCommander {
   private defaultLeverageCap: number = 25;
   private minFundingEdgePct: number = 0.15;
   private historyService?: FundingHistoryService;
-  private manualTradeService?: ManualTradeService;
   private sentinel?: LiquidationSentinel;
   private symbolCache?: SymbolCache;
   private isAutoExecutionFrozen?: () => boolean;
@@ -83,7 +80,6 @@ export class TelegramCommander {
     this.defaultLeverageCap = options.defaultLeverageCap ?? 25;
     this.minFundingEdgePct = options.minFundingEdgePct ?? 0.15;
     this.historyService = options.historyService;
-    this.manualTradeService = options.manualTradeService;
     this.sentinel = options.sentinel;
     this.symbolCache = options.symbolCache;
     this.isAutoExecutionFrozen = options.isAutoExecutionFrozen;
@@ -220,13 +216,7 @@ export class TelegramCommander {
       const symbol = data.substring(5).trim();
       await this.handlePairSelected(symbol, messageId);
     } else if (data.startsWith('TRADE:')) {
-      // TRADE:SYMBOL:MARGIN
-      const parts = data.split(':');
-      const symbol = parts[1] || '';
-      const margin = parts[2] ? parseFloat(parts[2]) : 10;
-      if (symbol) {
-        await this.handleExecuteTrade(symbol, margin);
-      }
+      await this.telegramNotifier.sendMessage('⚠️ Manual trade execution from Telegram is disabled.');
     } else if (data === 'FLATTEN_ALL') {
       await this.handleEmergencyFlatten();
     } else if (data === 'WALLET') {
@@ -248,7 +238,6 @@ export class TelegramCommander {
     const commandAliases: Record<string, string> = {
       '📊 top 10 dashboard': '/dashboard',
       '📈 funding spreads': '/top10',
-      '⚡ manual trade': '/trade',
       '🗓️ 7-day history': '/history',
       '🎯 next trade plan': '/next',
       '💼 wallet & margin': '/wallet',
@@ -263,7 +252,6 @@ export class TelegramCommander {
     const rawTrimmed =
       commandAliases[buttonText] ||
       (buttonText.includes('current trade') ? '/trades' : undefined) ||
-      (buttonText.includes('manual trade') ? '/trade' : undefined) ||
       (buttonText.includes('dashboard') ? '/dashboard' : undefined) ||
       (buttonText.includes('funding spreads') ? '/top10' : undefined) ||
       (buttonText.includes('7-day history') ? '/history' : undefined) ||
@@ -282,27 +270,10 @@ export class TelegramCommander {
 
     this.isProcessingCommand = true;
     try {
-      // 1. Trade command: "trade <symbol> <margin>" or "/trade <symbol> <margin>"
+      // Manual trade execution is intentionally unavailable through Telegram.
       if (firstWord === 'trade') {
-        if (parts.length >= 2) {
-          const symbol = (parts[1] || '').toUpperCase();
-          const margin = parts[2] ? parseFloat(parts[2]) : 10;
-          if (symbol) {
-            await this.handleExecuteTrade(symbol, margin);
-            return;
-          }
-        } else {
-          await this.telegramNotifier.sendMessageWithMarkup(
-            `⚡ *How to execute a 5x trade:*\nSend: \`/trade <PAIR> <MARGIN_USDT>\`\nExample: \`/trade AKE 10\` (opens $10 margin at 5x = $50 notional)\n\n_Or open the Top 10 Dashboard to use 1-click trade buttons:_`,
-            {
-              inline_keyboard: [
-                [{ text: '📊 Open Top 10 Dashboard', callback_data: 'DASHBOARD' }],
-                [{ text: '🚨 Flatten All (100% USDT)', callback_data: 'FLATTEN_ALL' }],
-              ],
-            }
-          );
-          return;
-        }
+        await this.telegramNotifier.sendMessage('⚠️ Manual trade execution from Telegram is disabled.');
+        return;
       }
 
       // 2. 7-Day History command: "7d <symbol>" or "/7d <symbol>" or "/history <symbol>"
@@ -334,7 +305,7 @@ export class TelegramCommander {
 
       // 3. Direct coin symbol query (e.g. user sends "BTC" or "AKE")
       const candidateSymbol = rawTrimmed.toUpperCase().replace(/^\//, '').replace(/USDT$/, '');
-      const reservedWords = new Set(['HELP', 'NEXT', 'TOP', 'TOP10', 'TOP5', 'START', 'MENU', 'STATUS', 'WALLET', 'TRADES', 'POS', 'FREEZE', 'UNFREEZE', 'FLATTEN', 'TEST', 'TESTORDER', 'DASHBOARD', 'DASH', 'DIFF', 'RATES', 'FUNDING']);
+      const reservedWords = new Set(['HELP', 'NEXT', 'TOP', 'TOP10', 'TOP5', 'START', 'MENU', 'STATUS', 'WALLET', 'TRADES', 'POS', 'FREEZE', 'UNFREEZE', 'FLATTEN', 'TEST', 'TESTORDER', 'DASHBOARD', 'DASH', 'DIFF', 'RATES', 'FUNDING', 'TRADE']);
       if (/^[A-Z0-9]{2,10}$/.test(candidateSymbol) && parts.length === 1 && !reservedWords.has(candidateSymbol)) {
         await this.handlePairSelected(candidateSymbol);
         return;
@@ -385,7 +356,7 @@ export class TelegramCommander {
       if (lower.includes('freeze') || lower.includes('pause') || firstWord === 'freeze') {
         if (this.freezeAutoExecution) {
           this.freezeAutoExecution();
-          await this.telegramNotifier.sendMessage('❄️ *Automated trade execution is now FROZEN (Manual Mode Active).* Bot will not place trades autonomously. Use the Telegram dashboard to trade.');
+          await this.telegramNotifier.sendMessage('❄️ *Automated trade execution is now FROZEN.* Bot will not place trades autonomously.');
         } else {
           await this.telegramNotifier.sendMessage('❄️ *Automated trade execution is FROZEN.*');
         }
@@ -436,7 +407,7 @@ export class TelegramCommander {
 
       // Fallback
       await this.telegramNotifier.sendMessageWithMarkup(
-        `❓ Unknown command: \`${text}\`\n\nTap a button below or send a command:\n• /dashboard — Interactive Top 10 Dashboard with 5x buttons\n• /top10 — Top 10 funding spreads & 7-day stats\n• /trade <pair> <margin> — Execute 5x trade (e.g. \`/trade AKE 10\`)\n• /history <pair> — 7-day funding history (e.g. \`/history BTC\`)\n• /next — Next trade plan & profit forecast\n• /wallet — Binance & Bybit balances & margin\n• /status — Bot health, mode & net PnL\n• /freeze — Freeze auto-trade (Manual Only)\n• /unfreeze — Unfreeze auto-trade (Autonomous)\n• /flatten — 🚨 Emergency close all positions (100% USDT)\n• /help — Full command guide`,
+        `❓ Unknown command: \`${text}\`\n\nTap a button below or send a command:\n• /dashboard — Interactive Top 10 funding dashboard\n• /top10 — Top 10 funding spreads & 7-day stats\n• /history <pair> — 7-day funding history (e.g. \`/history BTC\`)\n• /next — Next automated trade plan & profit forecast\n• /wallet — Binance & Bybit balances & margin\n• /status — Bot health, mode & net PnL\n• /freeze — Freeze auto-trade\n• /unfreeze — Unfreeze auto-trade\n• /flatten — 🚨 Emergency close all positions (100% USDT)\n• /help — Full command guide`,
         this.telegramNotifier.getDefaultReplyKeyboard()
       );
     } finally {
@@ -532,7 +503,7 @@ export class TelegramCommander {
 
       textLines.push(
         `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-        `👇 *Select a pair below to view 7-Day History & Trade (5x):*`
+        `👇 *Select a pair below to view 7-Day Funding History:*`
       );
 
       // Construct Inline Keyboard with buttons for each pair (2 per row)
@@ -584,7 +555,7 @@ export class TelegramCommander {
   }
 
   /**
-   * Pair Detail View: Shows 7-Day Funding Rate Historical Analysis & 5x Margin Buttons
+   * Pair Detail View: Shows 7-Day Funding Rate Historical Analysis
    */
   public async handlePairSelected(coin: string, messageId?: number): Promise<void> {
     try {
@@ -679,18 +650,10 @@ export class TelegramCommander {
         `• *$50 Margin ($250 Notional):* Gross \`${p50.gross}\`, Net *${p50.net} USDT*`,
         `• *$100 Margin ($500 Notional):* Gross \`${p100.gross}\`, Net *${p100.net} USDT*`,
         `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-        `👇 *Click Below to Execute Simultaneous 5x Trade:*`
+        `👇 *Use the buttons below to navigate funding analytics:*`
       ].join('\n');
 
       const inline_keyboard = [
-        [
-          { text: `💵 Trade $10 (5x)`, callback_data: `TRADE:${cleanCoin}:10` },
-          { text: `💵 Trade $25 (5x)`, callback_data: `TRADE:${cleanCoin}:25` },
-        ],
-        [
-          { text: `💵 Trade $50 (5x)`, callback_data: `TRADE:${cleanCoin}:50` },
-          { text: `💵 Trade $100 (5x)`, callback_data: `TRADE:${cleanCoin}:100` },
-        ],
         [
           { text: `🔙 Back to Top 10`, callback_data: 'DASHBOARD' },
           { text: `🚨 Emergency Flatten`, callback_data: 'FLATTEN_ALL' },
@@ -710,82 +673,23 @@ export class TelegramCommander {
     }
   }
 
-  /**
-   * Executes a simultaneous delta-neutral trade on Binance & Bybit with strictly 5x leverage
-   */
-  public async handleExecuteTrade(coin: string, marginUsd: number): Promise<void> {
-    if (!this.manualTradeService) {
-      await this.telegramNotifier.sendMessage('⚠️ Trade execution engine is not attached.');
-      return;
-    }
-
-    try {
-      await this.telegramNotifier.sendMessage(
-        `⏳ *Checking margin & submitting simultaneous 5x manual orders for ${coin} ($${marginUsd} USDT margin)...*`
-      );
-
-      const isSimulated = false; // Runs live if in live mode
-      const result = await this.manualTradeService.executeManualTrade(
-        {
-          symbol: coin,
-          marginUsd,
-        },
-        isSimulated
-      );
-
-      const text = [
-        `✅ *5X ARBITRAGE TRADE SIMULTANEOUSLY OPENED*`,
-        `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-        `🎯 *Pair:* \`${result.symbol}\` (\`Strict 5x Leverage\`)`,
-        `💵 *Margin per Leg:* \`$${result.marginUsd.toFixed(2)} USDT\``,
-        `⚖️ *Notional per Leg:* \`$${result.notionalUsd.toFixed(2)} USDT\``,
-        `🔄 *Direction:* \`${result.direction}\``,
-        `📊 *Live Spread:* \`+${result.spreadPct}%\``,
-        `💰 *Expected Net Profit:* \`+$${result.expectedNetProfitUsd.toFixed(4)} USDT\``,
-        `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-        `🛡️ *Liquidation Sentinel Active:*`,
-        `• Real-time orphan leg detection (surviving leg auto-flattens immediately)`,
-        `• Minimum margin guard actively monitored every 3 seconds`,
-        `• Post-settlement exit will close flat and collect funding automatically.`
-      ].join('\n');
-
-      const inline_keyboard = [
-        [
-          { text: '📊 Open Positions', callback_data: 'STATUS' },
-          { text: '🔙 Top 10 Dashboard', callback_data: 'DASHBOARD' },
-        ],
-        [
-          { text: '🚨 Flatten All Positions (100% USDT)', callback_data: 'FLATTEN_ALL' },
-        ],
-      ];
-
-      await this.telegramNotifier.sendMessageWithMarkup(text, { inline_keyboard });
-    } catch (err: any) {
-      logger.error({ coin, marginUsd, err: err?.message }, 'Manual trade execution failed from Telegram');
-      await this.telegramNotifier.sendMessage(
-        `🚨 *TRADE EXECUTION FAILED:*\n\`${err?.message || err}\`\n\n_Safety checks prevented execution to protect capital._`
-      );
-    }
-  }
-
   private async handleHelp(): Promise<void> {
     const msg = [
       `🤖 *FUNDING ARBITRAGE BOT — ALL COMMANDS GUIDE* 🤖`,
       `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
       `📊 *Dashboard & Analytics Commands:*`,
-      `• */dashboard* — Live Top 10 Arbitrage Dashboard with interactive 5x trade buttons ($10, $25, $50, $100).`,
+      `• */dashboard* — Live Top 10 Arbitrage Dashboard with funding spreads and 7-day stats.`,
       `• */top10* — View the top 10 cross-exchange funding rate spreads with APR and countdown.`,
       `• */history <pair>* (or \`/7d <pair>\`) — View last 7 days funding rate history, consistency score %, win rate %, and dominant direction (e.g. \`/history BTC\`).`,
       `• */next* — Shows the upcoming candidate pair, margin required, fee deductions, and net profit forecast.`,
       ``,
-      `⚡ *Execution & Trading Commands:*`,
-      `• */trade <pair> <margin>* — Instantly opens a concurrent 5x trade with specified USDT margin (e.g. \`/trade AKE 10\`).`,
+      `⚡ *Account & Position Commands:*`,
       `• */wallet* — Live USDT balances, free margin, and fee tiers on Binance & Bybit.`,
       `• */status* — Bot uptime, risk engine status, circuit breaker health, and today's realized PnL.`,
       `• */trades* — View currently active positions and PnL across Binance & Bybit.`,
       ``,
       `🛡️ *Control & Risk Commands:*`,
-      `• */freeze* — Freeze automated trade execution (Manual Mode: trade via buttons only).`,
+      `• */freeze* — Freeze automated trade execution.`,
       `• */unfreeze* — Unfreeze automated trade execution (Autonomous Mode).`,
       `• */flatten* — 🚨 Instant Emergency Stop: Market-closes 100% of open positions on Binance & Bybit to USDT.`,
       `• */help* — Show this complete command reference guide.`,
@@ -920,7 +824,7 @@ export class TelegramCommander {
         `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
         ...lines,
         `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-        `💡 _Click below for interactive 7-day stats and 5x trade buttons:_`
+        `💡 _Click below for interactive 7-day funding statistics:_`
       ].join('\n');
 
       const inline_keyboard = [
@@ -1099,10 +1003,6 @@ export class TelegramCommander {
       ].filter(Boolean).join('\n');
 
       const inline_keyboard = [
-        [
-          { text: `💵 Trade $10 (5x)`, callback_data: `TRADE:${coin}:10` },
-          { text: `💵 Trade $25 (5x)`, callback_data: `TRADE:${coin}:25` },
-        ],
         [
           { text: '📊 Top 10 Dashboard', callback_data: 'DASHBOARD' },
         ],
