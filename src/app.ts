@@ -38,6 +38,9 @@ import { TelegramCommander } from './notifications/telegram-commander.js';
 import { SystemHealth } from './monitoring/health.js';
 import { MetricsCollector } from './monitoring/metrics.js';
 import { MarginMonitor } from './risk/margin-monitor.js';
+import { LiquidationSentinel } from './risk/liquidation-sentinel.js';
+import { FundingHistoryService } from './analytics/funding-history.service.js';
+import { ManualTradeService } from './execution/manual-trade.service.js';
 import { logger } from './utils/logger.js';
 import { sleep } from './utils/time.js';
 
@@ -53,6 +56,9 @@ export class FundingArbitrageApp {
   private circuitBreaker: CircuitBreaker;
   private killSwitch: KillSwitch;
   private marginMonitor: MarginMonitor;
+  private sentinel: LiquidationSentinel;
+  private historyService: FundingHistoryService;
+  private manualTradeService: ManualTradeService;
   private executionEngine: ExecutionEngine;
   private telegram: TelegramNotifier;
   private telegramCommander?: TelegramCommander;
@@ -179,6 +185,24 @@ export class FundingArbitrageApp {
       this.telegram
     );
 
+    this.historyService = new FundingHistoryService();
+    this.sentinel = new LiquidationSentinel({
+      binanceClient: this.binanceClient,
+      bybitClient: this.bybitClient,
+      killSwitch: this.killSwitch,
+      telegram: this.telegram,
+      checkIntervalMs: 3000,
+      minEmergencyMarginUsd: 2.0,
+    });
+    this.manualTradeService = new ManualTradeService(
+      this.binanceClient,
+      this.bybitClient,
+      this.symbolCache,
+      this.executionEngine,
+      this.telegram,
+      config.appConfig
+    );
+
     if (config.appConfig.monitoring.telegram_enabled && config.env.TELEGRAM_BOT_TOKEN && config.env.TELEGRAM_CHAT_ID) {
       this.telegramCommander = new TelegramCommander({
         botToken: config.env.TELEGRAM_BOT_TOKEN,
@@ -199,8 +223,12 @@ export class FundingArbitrageApp {
         },
         entryLeadMinutes: config.appConfig.strategy.entry_lead_minutes,
         marginPerLegUsd: parseFloat(process.env.TRADE_MARGIN_PER_LEG_USD || '10') || 10,
-        defaultLeverageCap: config.appConfig.risk.default_leverage_cap || 25,
+        defaultLeverageCap: 5,
         minFundingEdgePct: config.appConfig.strategy.minimum_funding_edge_pct || 0.15,
+        historyService: this.historyService,
+        manualTradeService: this.manualTradeService,
+        sentinel: this.sentinel,
+        symbolCache: this.symbolCache,
       });
     }
 
@@ -278,7 +306,8 @@ export class FundingArbitrageApp {
     // Initial symbol cache refresh
     const activeSymbols = await this.symbolCache.refreshIfExpired();
 
-    // Start Telegram command listener if configured
+    // Start Liquidation Sentinel and Telegram command listener
+    this.sentinel.start();
     if (this.telegramCommander) {
       this.telegramCommander.start();
     }
@@ -291,12 +320,18 @@ export class FundingArbitrageApp {
     const startupMessage = [
       `🤖 *Funding Arbitrage Bot Online* (\`${modeStr}\`)`,
       `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-      `💬 *Commands You Can Send:*\n`,
+      `⚡ *Leverage:* \`Strict 5x Only\``,
+      `🛡️ *Liquidation Sentinel:* \`Active (Instant Flatten on 1-Leg Liquidation / Margin Drop)\``,
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+      `💬 *Interactive Telegram Commands:*\n`,
+      `• *dashboard* — Live Top 10 Dashboard with interactive 5x trade buttons`,
+      `• *trade <pair> <margin>* — Instant 5x simultaneous trade (e.g. \`trade AKE 10\`)`,
+      `• *7d <pair>* — 7-day historical funding rate performance & edge`,
       `• *next* — Next trade plan, margin & profit forecast`,
       `• *wallet* — Binance & Bybit wallet balances & margin`,
       `• *top5* — Top 5 highest funding rate spreads`,
       `• *status* — System health & today's PnL`,
-      `• *help* — View full command & alert guide`,
+      `• *flatten* — 🚨 Instant Emergency Stop: Close all positions to 100% USDT`,
       `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
       `_Scanning ${activeSymbols.length} perpetuals across Binance & Bybit..._`
     ].join('\n');
@@ -465,6 +500,9 @@ export class FundingArbitrageApp {
   stop(): void {
     logger.info('Stopping Funding Arbitrage Bot...');
     this.isRunning = false;
+    if (this.sentinel) {
+      this.sentinel.stop();
+    }
     if (this.telegramCommander) {
       this.telegramCommander.stop();
     }

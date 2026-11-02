@@ -138,14 +138,12 @@ export class TelegramNotifier {
     details: string,
     severity: 'INFO' | 'WARN' | 'ERROR' = 'INFO'
   ): Promise<void> {
-    // If routine monitoring expired, ONLY allow critical risk alerts through!
     const isCritical = this.isCriticalEvent(eventType);
     if (!this.isMonitoringActive() && !isCritical) {
       logger.debug({ eventType }, 'Monitoring window expired; skipping routine notification');
       return;
     }
 
-    // Deduplication check: suppress identical messages within 60 seconds
     const dedupKey = `${eventType}:${title}:${details}`;
     const now = Date.now();
     const lastSent = this.recentMessages.get(dedupKey);
@@ -155,7 +153,6 @@ export class TelegramNotifier {
     }
     this.recentMessages.set(dedupKey, now);
 
-    // Clean up old dedup entries
     if (this.recentMessages.size > 100) {
       for (const [k, v] of this.recentMessages.entries()) {
         if (now - v > 120000) this.recentMessages.delete(k);
@@ -217,35 +214,45 @@ export class TelegramNotifier {
   }
 
   async sendMessage(text: string): Promise<void> {
+    await this.sendMessageWithMarkup(text);
+  }
+
+  async sendMessageWithMarkup(text: string, replyMarkup?: any): Promise<{ ok: boolean; messageId?: number }> {
     if (!this.enabled && !this.isTestingMode) {
-      return;
+      return { ok: false };
     }
 
     if (this.isTestingMode && this.mockSender) {
       await this.mockSender('', text);
-      return;
+      return { ok: true, messageId: 999 };
     }
 
     if (!this.botToken || !this.chatId) {
-      return;
+      return { ok: false };
     }
 
-    // Retry with bounded backoff (max 3 attempts). NEVER crash the trading engine!
+    // Retry with bounded backoff (max 3 attempts)
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
         const url = `https://api.telegram.org/bot${this.botToken}/sendMessage`;
+        const payload: any = {
+          chat_id: this.chatId,
+          text,
+          parse_mode: 'Markdown',
+        };
+        if (replyMarkup) {
+          payload.reply_markup = replyMarkup;
+        }
+
         const res = await request(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            chat_id: this.chatId,
-            text,
-            parse_mode: 'Markdown',
-          }),
+          body: JSON.stringify(payload),
         });
 
         if (res.statusCode === 200) {
-          return;
+          const body: any = await res.body.json();
+          return { ok: true, messageId: body?.result?.message_id };
         }
 
         const errText = await res.body.text();
@@ -257,6 +264,54 @@ export class TelegramNotifier {
           await sleep(500 * Math.pow(2, attempt));
         }
       }
+    }
+    return { ok: false };
+  }
+
+  async editMessageText(messageId: number, text: string, replyMarkup?: any): Promise<boolean> {
+    if (!this.enabled || !this.botToken || !this.chatId) return false;
+
+    try {
+      const url = `https://api.telegram.org/bot${this.botToken}/editMessageText`;
+      const payload: any = {
+        chat_id: this.chatId,
+        message_id: messageId,
+        text,
+        parse_mode: 'Markdown',
+      };
+      if (replyMarkup) {
+        payload.reply_markup = replyMarkup;
+      }
+
+      const res = await request(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      return res.statusCode === 200;
+    } catch {
+      return false;
+    }
+  }
+
+  async answerCallbackQuery(callbackQueryId: string, text?: string): Promise<boolean> {
+    if (!this.enabled || !this.botToken) return false;
+
+    try {
+      const url = `https://api.telegram.org/bot${this.botToken}/answerCallbackQuery`;
+      const payload: any = { callback_query_id: callbackQueryId };
+      if (text) payload.text = text;
+
+      const res = await request(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      return res.statusCode === 200;
+    } catch {
+      return false;
     }
   }
 

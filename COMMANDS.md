@@ -249,20 +249,40 @@ systemctl restart funding
 
 ---
 
-## 6. Interactive Telegram Commands (Chat Control)
+## 6. Interactive Telegram Dashboard & Commands (Chat Control)
 
-You can send commands directly in your Telegram chat to trigger actions on the running bot in real-time. No terminal access needed! Works with or without slash `/`.
+You can interact directly with the bot in Telegram using both **interactive inline keyboard buttons** and text commands. Works with or without slash `/`.
 
-| Telegram Message | Triggered Action | Response Summary |
+| Telegram Command / Button | Triggered Action | Response & Interactive Controls |
 | :--- | :--- | :--- |
-| **`wallet`** (or `bal`) | Runs wallet & margin query | Shows Binance & Bybit USDT balances, margin availability, capital bottleneck, and maximum safe position size (at 3x & 5x). |
-| **`next`** (or `plan`) | Next planned trade | 🎯 Full details of the next planned trade: target coin, funding spread, dynamic leverage, required margins, and entry countdown. |
+| **`dashboard`** (or `top10`, `dash`) | 📊 **Top 10 Arbitrage Dashboard** | Scans 600+ perpetuals, pulls 7-day cumulative yield & consistency %, and renders **interactive inline buttons for each of the Top 10 pairs**. |
+| **Tap Pair Button** (e.g. `[1. AKE (+0.85%)]`) | 📈 **Pair 7-Day Performance & 5x Sizing** | Shows 7-day cumulative yield, settlement count, win consistency rate %, live rates, and **Margin Buttons**: `[$10 (5x)]`, `[$25 (5x)]`, `[$50 (5x)]`, `[$100 (5x)]`. |
+| **Tap Margin Button** (e.g. `[💵 Trade $10 (5x)]`) | ⚡ **Simultaneous 5x Execution** | Automatically sizes delta-neutral trade to custom margin at **strictly 5x leverage**, concurrently places market orders on Binance & Bybit, collects funding, and exits flat post-settlement. |
+| **`trade <pair> <margin>`** (e.g. `trade AKE 10`) | Direct 5x Trade Entry | Directly executes a 5x leverage arbitrage trade on `<pair>` with specified USDT margin per leg without opening the dashboard. |
+| **`7d <pair>`** (e.g. `7d BTC` or `7d AKE`) | 7-Day Funding Rate Analysis | Fetches last 7 days of historical funding rates from Binance & Bybit, displays consistency win rate, cumulative return %, and dominant direction. |
+| **`wallet`** (or `bal`) | Runs wallet & margin query | Shows Binance & Bybit USDT balances, margin availability, and maximum safe position size locked at strictly 5x. |
+| **`next`** (or `plan`) | Next planned trade | 🎯 Full details of upcoming candidate trade: target coin, funding spread, strict 5x leverage, required margins, and entry countdown. |
 | **`top5`** (or `diff`, `rates`) | Scans live market spreads | Returns the Top 5 highest funding rate difference pairs across Binance & Bybit with live rates, spreads, and annualized APR. |
-| **`status`** (or `health`) | Checks system vitals | Displays engine health (`HEALTHY`, `TRIPPED`, `KILL_SWITCH`), active trade count, today's trade count, funding income, fees, and net realized P&L. |
+| **`status`** (or `health`) | Checks system vitals | Displays engine health (`HEALTHY`, `TRIPPED`, `KILL_SWITCH`), Liquidation Sentinel status, active trade count, and today's net PnL. |
 | **`trades`** (or `pos`) | Audits open trades | Details any currently active arbitrage pair, entry state, leg notionals, and expected net profit. |
-| **`test`** (or `testorder`) | 🧪 Connection Test (ETH) | Submits concurrent minimum lot test orders for **Ethereum (ETH)** on **Binance & Bybit**, verifies execution, auto-closes after 3s, and replies with full status confirmation. |
-| **`flatten`** (or `kill`) | 🚨 Emergency Kill Switch | Immediately cancels all orders, executes market reduce-only liquidations on all open positions across both exchanges, and activates the kill switch. |
+| **`flatten`** (or `kill`, or `[🚨 Flatten All]`) | 🚨 Emergency Kill Switch | Immediately cancels all orders, executes market reduce-only liquidations on all open positions across both exchanges (100% USDT), and activates the kill switch. |
+| **`test`** (or `testorder`) | 🧪 Dual Test Order | Submits concurrent test orders on Binance & Bybit for Dogecoin (DOGE), verifies execution, auto-closes, and reports confirmation. |
 | **`help`** (or `menu`) | Help menu | Lists all available interactive Telegram commands. |
+
+---
+
+## 7. Liquidation Sentinel & Margin Safety Watchdog
+
+The bot includes an autonomous background watchdog (`LiquidationSentinel`) operating continuously on a 3-second heartbeat:
+
+1. **One-Leg Liquidation / Orphan Leg Detection**:
+   - If Binance has an active position for a coin, but Bybit has 0 (or flat)
+   - If Bybit has an active position for a coin, but Binance has 0 (or flat)
+   - **Immediate Action**: The watchdog recognizes that one exchange leg was liquidated or terminated, **immediately flattens 100% of all surviving positions to USDT via market reduce-only orders**, engages the kill switch, and broadcasts an emergency alert to Telegram.
+2. **Margin Depletion Guard**:
+   - If free available USDT margin on Binance or Bybit drops below `$2.0 USDT` while holding active positions, the watchdog immediately flattens all positions to prevent liquidation cascade.
+3. **Emergency Telegram Broadcast**:
+   - Sends instant formatted alert with trigger cause, number of positions flattened, and remaining wallet balances.
 
 ---
 
