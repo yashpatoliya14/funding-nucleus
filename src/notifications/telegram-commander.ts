@@ -104,6 +104,12 @@ export class TelegramCommander {
   }
 
   private async initAndPoll(): Promise<void> {
+    try {
+      await this.telegramNotifier.registerBotCommands();
+      await this.telegramNotifier.setCommandsMenuButton();
+    } catch (err: any) {
+      logger.warn({ err: err?.message }, 'Failed registering bot commands with Telegram API in initAndPoll');
+    }
     await this.initializeOffset();
     await this.pollLoop();
   }

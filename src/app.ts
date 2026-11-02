@@ -336,7 +336,7 @@ export class FundingArbitrageApp {
       `• *freeze* / *unfreeze* — Toggle automatic trade execution`,
       `• *next* — Next trade plan, margin & profit forecast`,
       `• *wallet* — Binance & Bybit wallet balances & margin`,
-      `• *top5* — Top 5 highest funding rate spreads`,
+      `• *top10* — Top 10 highest funding rate spreads & 7-day stats`,
       `• *status* — System health & today's PnL`,
       `• *flatten* — 🚨 Instant Emergency Stop: Close all positions to 100% USDT`,
       `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
@@ -424,9 +424,9 @@ export class FundingArbitrageApp {
             // Pre-trade risk check
             await this.riskManager.validatePreTrade(evaluated);
 
-              // Build Top 5 funding spread snapshot text before entering
-              const top5 = opportunities.slice(0, 5);
-              const top5Lines = top5.map((opp, idx) => {
+              // Build Top 10 funding spread snapshot text before entering
+              const top10 = opportunities.slice(0, 10);
+              const top10Lines = top10.map((opp, idx) => {
                 const coin = opp.mapping.normalized_symbol;
                 const edgePct = parseFloat(opp.fundingDiffPct.toString()).toFixed(4);
                 const bRate = (parseFloat(opp.binanceRate.toString()) * 100).toFixed(4);
@@ -486,8 +486,8 @@ export class FundingArbitrageApp {
                 `• *Expected Net PnL:* \`+$${netProfitUsd}\``,
                 `• *Target Settlement In:* \`~${this.config.appConfig.strategy.entry_lead_minutes} minutes\``,
                 '',
-                `📋 *Top 5 Funding Spreads At Time of Entry:*`,
-                top5Lines.join('\n'),
+                `📋 *Top 10 Funding Spreads At Time of Entry:*`,
+                top10Lines.join('\n'),
                 `━━━━━━━━━━━━━━━━━━━━━━`,
                 `🚀 *Orders submitted concurrently. Will exit immediately after settlement.*`
               ].join('\n');
