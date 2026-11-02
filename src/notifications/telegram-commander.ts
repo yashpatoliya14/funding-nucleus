@@ -253,22 +253,55 @@ export class TelegramCommander {
 
     this.isProcessingCommand = true;
     try {
-      // Custom command with arguments: "trade <symbol> <margin>" or "/trade <symbol> <margin>"
-      if ((firstWord === 'trade' || lower.startsWith('/trade') || lower.startsWith('trade ')) && parts.length >= 2) {
-        const symbol = (parts[1] || '').toUpperCase();
-        const margin = parts[2] ? parseFloat(parts[2]) : 10;
-        if (symbol) {
-          await this.handleExecuteTrade(symbol, margin);
+      // 1. Trade command: "trade <symbol> <margin>" or "/trade <symbol> <margin>"
+      if (firstWord === 'trade' || lower.startsWith('/trade') || lower.startsWith('trade')) {
+        if (parts.length >= 2) {
+          const symbol = (parts[1] || '').toUpperCase();
+          const margin = parts[2] ? parseFloat(parts[2]) : 10;
+          if (symbol) {
+            await this.handleExecuteTrade(symbol, margin);
+            return;
+          }
+        } else {
+          await this.telegramNotifier.sendMessageWithMarkup(
+            `⚡ *How to execute a 5x trade:*\nSend: \`/trade <PAIR> <MARGIN_USDT>\`\nExample: \`/trade AKE 10\` (opens $10 margin at 5x = $50 notional)\n\n_Or open the Top 10 Dashboard to use 1-click trade buttons:_`,
+            {
+              inline_keyboard: [
+                [{ text: '📊 Open Top 10 Dashboard', callback_data: 'DASHBOARD' }],
+                [{ text: '🚨 Flatten All (100% USDT)', callback_data: 'FLATTEN_ALL' }],
+              ],
+            }
+          );
+          return;
         }
-        return;
       }
 
-      // Custom command: "7d <symbol>" or "/7d <symbol>" or "/history <symbol>"
-      if ((firstWord === '7d' || firstWord === 'history' || lower.startsWith('/7d') || lower.startsWith('/history')) && parts.length >= 2) {
-        const symbol = (parts[1] || '').toUpperCase();
-        if (symbol) {
-          await this.handlePairSelected(symbol);
+      // 2. 7-Day History command: "7d <symbol>" or "/7d <symbol>" or "/history <symbol>"
+      if (firstWord === '7d' || firstWord === 'history' || lower.startsWith('/7d') || lower.startsWith('/history')) {
+        if (parts.length >= 2) {
+          const symbol = (parts[1] || '').toUpperCase();
+          if (symbol) {
+            await this.handlePairSelected(symbol);
+            return;
+          }
+        } else {
+          await this.telegramNotifier.sendMessageWithMarkup(
+            `📈 *How to view 7-Day Funding History:*\nSend: \`/history <PAIR>\` (e.g. \`/history BTC\` or \`/7d AKE\`)\n\n_Or view the Top 10 coins with full 7-day stats:_`,
+            {
+              inline_keyboard: [
+                [{ text: '📊 Open Top 10 Dashboard', callback_data: 'DASHBOARD' }],
+              ],
+            }
+          );
+          return;
         }
+      }
+
+      // 3. Direct coin symbol query (e.g. user sends "BTC" or "AKE")
+      const candidateSymbol = rawTrimmed.toUpperCase().replace(/^\//, '').replace(/USDT$/, '');
+      const reservedWords = new Set(['HELP', 'NEXT', 'TOP', 'TOP10', 'TOP5', 'START', 'MENU', 'STATUS', 'WALLET', 'TRADES', 'POS', 'FREEZE', 'UNFREEZE', 'FLATTEN', 'TEST', 'TESTORDER', 'DASHBOARD', 'DASH', 'DIFF', 'RATES', 'FUNDING']);
+      if (/^[A-Z0-9]{2,10}$/.test(candidateSymbol) && parts.length === 1 && !reservedWords.has(candidateSymbol)) {
+        await this.handlePairSelected(candidateSymbol);
         return;
       }
 
