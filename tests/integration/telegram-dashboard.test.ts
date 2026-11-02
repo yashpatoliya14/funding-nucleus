@@ -109,6 +109,13 @@ describe('Integration Tests: Telegram Interactive Dashboard & 5x Trading', () =>
     expect(lastMsg.text).toContain('STRICT 5x ONLY');
   });
 
+  it('dispatches the registered dashboard slash command', async () => {
+    await (commander as any).handleMessage('/dashboard');
+
+    expect(dispatchedMessages.length).toBeGreaterThanOrEqual(1);
+    expect(dispatchedMessages[dispatchedMessages.length - 1]!.text).toContain('FUNDING ARBITRAGE DASHBOARD');
+  });
+
   it('toggles freeze and unfreeze execution mode via Telegram command', async () => {
     // Unfreeze command
     await (commander as any).handleMessage('unfreeze');

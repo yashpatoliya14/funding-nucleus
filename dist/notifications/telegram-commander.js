@@ -256,6 +256,11 @@ export class TelegramCommander {
                     return;
                 }
             }
+            // Handle the registered dashboard command before direct symbol lookup.
+            if (firstWord === 'dashboard' || firstWord === 'dash' || firstWord === 'top10') {
+                await this.handleDashboard();
+                return;
+            }
             // 3. Direct coin symbol query (e.g. user sends "BTC" or "AKE")
             const candidateSymbol = rawTrimmed.toUpperCase().replace(/^\//, '').replace(/USDT$/, '');
             const reservedWords = new Set(['HELP', 'NEXT', 'TOP', 'TOP10', 'TOP5', 'START', 'MENU', 'STATUS', 'WALLET', 'TRADES', 'POS', 'FREEZE', 'UNFREEZE', 'FLATTEN', 'TEST', 'TESTORDER', 'DASHBOARD', 'DASH', 'DIFF', 'RATES', 'FUNDING']);
