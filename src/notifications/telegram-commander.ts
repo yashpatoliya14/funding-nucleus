@@ -64,6 +64,7 @@ export class TelegramCommander {
   private lastUpdateId: number = 0;
   private processedUpdateIds: Set<number> = new Set();
   private isProcessingCommand: boolean = false;
+  private startedAtSec: number = Math.floor(Date.now() / 1000);
 
   constructor(options: TelegramCommanderOptions) {
     this.botToken = options.botToken;
@@ -115,7 +116,18 @@ export class TelegramCommander {
   }
 
   private async initializeOffset(): Promise<void> {
+    this.startedAtSec = Math.floor(Date.now() / 1000);
     try {
+      // 1. Drop all pending backlog updates on Telegram servers accumulated while offline
+      const flushUrl = `https://api.telegram.org/bot${this.botToken}/deleteWebhook?drop_pending_updates=true`;
+      await request(flushUrl, { method: 'POST' });
+      logger.info('Purged stale Telegram update backlog on startup via deleteWebhook');
+    } catch (err: any) {
+      logger.warn({ err: err?.message }, 'Failed to drop pending Telegram updates via deleteWebhook');
+    }
+
+    try {
+      // 2. Fetch latest update id to advance offset past any lingering messages
       const url = `https://api.telegram.org/bot${this.botToken}/getUpdates?offset=-1&limit=1`;
       const res = await request(url, { method: 'GET' });
       if (res.statusCode === 200) {
@@ -124,6 +136,8 @@ export class TelegramCommander {
           const latest = body.result[body.result.length - 1];
           this.lastUpdateId = latest.update_id;
           this.processedUpdateIds.add(latest.update_id);
+          // Acknowledge this update immediately so Telegram marks it resolved
+          await request(`https://api.telegram.org/bot${this.botToken}/getUpdates?offset=${this.lastUpdateId + 1}&limit=1`, { method: 'GET' });
           logger.info({ lastUpdateId: this.lastUpdateId }, 'Flushed previous Telegram updates on startup');
         }
       }
@@ -156,6 +170,12 @@ export class TelegramCommander {
               // Handle callback queries (button clicks)
               if (update.callback_query) {
                 const cb = update.callback_query;
+                const cbDate = cb.message?.date;
+                // Discard stale callback clicks sent before the bot started (older than 30s before start)
+                if (cbDate && cbDate < this.startedAtSec - 30) {
+                  logger.debug({ cbDate, startedAt: this.startedAtSec }, 'Discarding stale callback query');
+                  continue;
+                }
                 const senderChatId = String(cb.message?.chat?.id || cb.from?.id || '');
                 if (senderChatId === this.chatId) {
                   await this.handleCallbackQuery(cb);
@@ -165,6 +185,12 @@ export class TelegramCommander {
 
               // Handle text messages
               if (update.message && update.message.text) {
+                const msgDate = update.message.date;
+                // Discard stale messages sent before the bot started (older than 30s before start)
+                if (msgDate && msgDate < this.startedAtSec - 30) {
+                  logger.debug({ msgDate, startedAt: this.startedAtSec }, 'Discarding stale message sent while bot was offline');
+                  continue;
+                }
                 const senderChatId = String(update.message.chat?.id || '');
                 if (senderChatId === this.chatId) {
                   await this.handleMessage(update.message.text.trim());
