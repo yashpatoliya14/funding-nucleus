@@ -59,6 +59,7 @@ describe('Integration Tests: Telegram Interactive Dashboard & 5x Trading', () =>
       minEmergencyMarginUsd: 2.0,
     });
 
+    let isFrozen = true;
     commander = new TelegramCommander({
       botToken: '123456:mock_token_abc',
       chatId: '987654321',
@@ -90,18 +91,32 @@ describe('Integration Tests: Telegram Interactive Dashboard & 5x Trading', () =>
         },
       ],
       sentinel,
+      isAutoExecutionFrozen: () => isFrozen,
+      freezeAutoExecution: () => { isFrozen = true; },
+      unfreezeAutoExecution: () => { isFrozen = false; },
     });
   });
 
-  it('renders top 10 arbitrage dashboard with pair inline buttons', async () => {
+  it('renders top 10 arbitrage dashboard with pair inline buttons and frozen manual badge', async () => {
     await commander.handleDashboard();
     expect(dispatchedMessages.length).toBeGreaterThanOrEqual(1);
 
     const lastMsg = dispatchedMessages[dispatchedMessages.length - 1]!;
     expect(lastMsg.text).toContain('FUNDING ARBITRAGE DASHBOARD');
+    expect(lastMsg.text).toContain('MANUAL ONLY (Auto-Trade Frozen)');
     expect(lastMsg.text).toContain('AKE');
     expect(lastMsg.text).toContain('IOST');
     expect(lastMsg.text).toContain('STRICT 5x ONLY');
+  });
+
+  it('toggles freeze and unfreeze execution mode via Telegram command', async () => {
+    // Unfreeze command
+    await (commander as any).handleMessage('unfreeze');
+    expect(dispatchedMessages[dispatchedMessages.length - 1]!.text).toContain('UNFROZEN');
+
+    // Freeze command
+    await (commander as any).handleMessage('freeze');
+    expect(dispatchedMessages[dispatchedMessages.length - 1]!.text).toContain('FROZEN');
   });
 
   it('renders pair detail view with 7-day stats and 5x margin options', async () => {

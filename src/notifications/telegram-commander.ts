@@ -32,6 +32,9 @@ export interface TelegramCommanderOptions {
   manualTradeService?: ManualTradeService;
   sentinel?: LiquidationSentinel;
   symbolCache?: SymbolCache;
+  isAutoExecutionFrozen?: () => boolean;
+  freezeAutoExecution?: () => void;
+  unfreezeAutoExecution?: () => void;
 }
 
 export class TelegramCommander {
@@ -54,6 +57,9 @@ export class TelegramCommander {
   private manualTradeService?: ManualTradeService;
   private sentinel?: LiquidationSentinel;
   private symbolCache?: SymbolCache;
+  private isAutoExecutionFrozen?: () => boolean;
+  private freezeAutoExecution?: () => void;
+  private unfreezeAutoExecution?: () => void;
   private isPolling: boolean = false;
   private lastUpdateId: number = 0;
   private processedUpdateIds: Set<number> = new Set();
@@ -79,6 +85,9 @@ export class TelegramCommander {
     this.manualTradeService = options.manualTradeService;
     this.sentinel = options.sentinel;
     this.symbolCache = options.symbolCache;
+    this.isAutoExecutionFrozen = options.isAutoExecutionFrozen;
+    this.freezeAutoExecution = options.freezeAutoExecution;
+    this.unfreezeAutoExecution = options.unfreezeAutoExecution;
   }
 
   public start(): void {
@@ -192,6 +201,14 @@ export class TelegramCommander {
       await this.handleWallet();
     } else if (data === 'STATUS') {
       await this.handleStatus();
+    } else if (data === 'FREEZE') {
+      if (this.freezeAutoExecution) this.freezeAutoExecution();
+      await this.telegramNotifier.sendMessage('❄️ *Automated trade execution is now FROZEN (Manual Mode Active).* Bot will not place trades on its own.');
+      await this.handleDashboard();
+    } else if (data === 'UNFREEZE') {
+      if (this.unfreezeAutoExecution) this.unfreezeAutoExecution();
+      await this.telegramNotifier.sendMessage('🟢 *Automated trade execution is now UNFROZEN.* Bot will automatically execute approved candidates in entry window.');
+      await this.handleDashboard();
     }
   }
 
@@ -276,6 +293,26 @@ export class TelegramCommander {
           await this.handleDualTestOrder();
           break;
 
+        case 'freeze':
+        case 'pause':
+          if (this.freezeAutoExecution) {
+            this.freezeAutoExecution();
+            await this.telegramNotifier.sendMessage('❄️ *Automated trade execution is now FROZEN (Manual Mode Active).* Bot will not place trades autonomously. Use the Telegram dashboard to trade.');
+          } else {
+            await this.telegramNotifier.sendMessage('❄️ *Automated trade execution is FROZEN.*');
+          }
+          break;
+
+        case 'unfreeze':
+        case 'resume':
+          if (this.unfreezeAutoExecution) {
+            this.unfreezeAutoExecution();
+            await this.telegramNotifier.sendMessage('🟢 *Automated trade execution is now UNFROZEN.* Bot will automatically execute approved candidates in entry window.');
+          } else {
+            await this.telegramNotifier.sendMessage('🟢 *Automated trade execution is enabled.*');
+          }
+          break;
+
         case 'help':
         case 'commands':
           await this.handleHelp();
@@ -350,11 +387,15 @@ export class TelegramCommander {
         })
       );
 
+      const isFrozen = this.isAutoExecutionFrozen ? this.isAutoExecutionFrozen() : true;
+      const modeBadge = isFrozen ? '❄️ MANUAL ONLY (Auto-Trade Frozen)' : '🟢 AUTO-EXECUTE ENABLED';
+
       // Build Top 10 Text
       const textLines: string[] = [
         `📊 *FUNDING ARBITRAGE DASHBOARD (TOP 10)*`,
         `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-        `⚡ *Leverage:* \`STRICT 5x ONLY\``,
+        `⚡ *Mode:* \`${modeBadge}\``,
+        `⚖️ *Leverage:* \`STRICT 5x ONLY\``,
         `🛡️ *Watchdog:* \`ACTIVE (Auto-Flatten on Orphan Leg or Margin Depletion)\``,
         ``,
       ];
@@ -403,11 +444,12 @@ export class TelegramCommander {
 
       // Add Utility Actions row
       inline_keyboard.push([
+        { text: isFrozen ? '🟢 Unfreeze Auto-Trade' : '❄️ Freeze Auto-Trade', callback_data: isFrozen ? 'UNFREEZE' : 'FREEZE' },
         { text: '🔄 Refresh Top 10', callback_data: 'DASHBOARD' },
-        { text: '💼 Wallets', callback_data: 'WALLET' },
       ]);
       inline_keyboard.push([
-        { text: '🚨 Emergency Flatten All (100% USDT)', callback_data: 'FLATTEN_ALL' },
+        { text: '💼 Wallets', callback_data: 'WALLET' },
+        { text: '🚨 Flatten All (100% USDT)', callback_data: 'FLATTEN_ALL' },
       ]);
 
       const fullMessage = textLines.filter((l) => l !== undefined).join('\n');
@@ -773,11 +815,14 @@ export class TelegramCommander {
 
       const netPnl = parseFloat(today.net_pnl_usd.toString());
       const pnlSign = netPnl >= 0 ? '+' : '';
+      const isFrozen = this.isAutoExecutionFrozen ? this.isAutoExecutionFrozen() : true;
+      const modeStr = isFrozen ? '❄️ MANUAL ONLY (Auto-Trade Frozen)' : '🟢 AUTO-EXECUTE ENABLED';
 
       const msg = [
         `🤖 *Bot Status & Safety Watchdog*`,
         ``,
         `• *State:* ${health}`,
+        `• *Execution Mode:* \`${modeStr}\``,
         `• *Active Trades:* \`${activeTrades.length}\``,
         `• *Today Completed:* \`${today.trade_count}\``,
         `• *Today Net PnL:* \`${pnlSign}$${netPnl.toFixed(4)} USDT\``,

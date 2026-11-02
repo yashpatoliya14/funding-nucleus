@@ -36,6 +36,7 @@ const EnvSchema = z.object({
     .string()
     .optional()
     .transform((v) => (v ? parseFloat(v) : undefined)),
+  AUTO_EXECUTE_TRADES: z.string().default('false').transform((v) => v === 'true'),
   CONFIG_PATH: z.string().default('./config/config.example.yaml'),
   LOG_LEVEL: z.string().optional(),
 });
@@ -87,6 +88,9 @@ export function loadConfig(customConfigPath?: string): FullConfig {
   }
   if (env.TRADE_MARGIN_PER_LEG_USD && env.TRADE_MARGIN_PER_LEG_USD > 0) {
     appConfig.risk.trade_margin_per_leg_usd = env.TRADE_MARGIN_PER_LEG_USD;
+  }
+  if (env.AUTO_EXECUTE_TRADES !== undefined) {
+    appConfig.strategy.auto_execute_trades = env.AUTO_EXECUTE_TRADES;
   }
 
   return { appConfig, env };

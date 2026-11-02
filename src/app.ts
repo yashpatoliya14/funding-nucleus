@@ -68,6 +68,7 @@ export class FundingArbitrageApp {
   private dailyRepo: DailySummaryRepository;
   private lockFilePath: string;
   private isRunning: boolean = false;
+  private isAutoExecutionFrozen: boolean = true;
   private lastPeriodicReportTime: number = 0;
 
   constructor(private config: FullConfig) {
@@ -76,6 +77,7 @@ export class FundingArbitrageApp {
       fs.mkdirSync(dataDir, { recursive: true });
     }
     this.lockFilePath = path.join(dataDir, 'funding-bot.lock');
+    this.isAutoExecutionFrozen = !config.appConfig.strategy.auto_execute_trades;
 
     // 1. Initialize SQLite database & migrations
     this.db = new AppDatabase(config.appConfig.persistence.path);
@@ -229,6 +231,9 @@ export class FundingArbitrageApp {
         manualTradeService: this.manualTradeService,
         sentinel: this.sentinel,
         symbolCache: this.symbolCache,
+        isAutoExecutionFrozen: () => this.isAutoExecutionFrozen,
+        freezeAutoExecution: () => this.freezeAutoExecution(),
+        unfreezeAutoExecution: () => this.unfreezeAutoExecution(),
       });
     }
 
@@ -320,13 +325,15 @@ export class FundingArbitrageApp {
     const startupMessage = [
       `🤖 *Funding Arbitrage Bot Online* (\`${modeStr}\`)`,
       `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-      `⚡ *Leverage:* \`Strict 5x Only\``,
+      `⚡ *Execution Mode:* \`${this.isAutoExecutionFrozen ? '❄️ MANUAL ONLY (Auto-Trade Frozen)' : '🟢 AUTO-EXECUTE ENABLED'}\``,
+      `⚖️ *Leverage:* \`Strict 5x Only\``,
       `🛡️ *Liquidation Sentinel:* \`Active (Instant Flatten on 1-Leg Liquidation / Margin Drop)\``,
       `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
       `💬 *Interactive Telegram Commands:*\n`,
       `• *dashboard* — Live Top 10 Dashboard with interactive 5x trade buttons`,
       `• *trade <pair> <margin>* — Instant 5x simultaneous trade (e.g. \`trade AKE 10\`)`,
       `• *7d <pair>* — 7-day historical funding rate performance & edge`,
+      `• *freeze* / *unfreeze* — Toggle automatic trade execution`,
       `• *next* — Next trade plan, margin & profit forecast`,
       `• *wallet* — Binance & Bybit wallet balances & margin`,
       `• *top5* — Top 5 highest funding rate spreads`,
@@ -402,8 +409,20 @@ export class FundingArbitrageApp {
 
           if (approvedCandidate) {
             const evaluated = approvedCandidate;
-              // Pre-trade risk check
-              await this.riskManager.validatePreTrade(evaluated);
+            const coin = evaluated.opportunity.mapping.normalized_symbol;
+            const edgePct = parseFloat(evaluated.opportunity.fundingDiffPct.toString()).toFixed(4);
+
+            if (this.isAutoExecutionFrozen) {
+              logger.info(
+                { coin, edgePct: `${edgePct}%` },
+                '❄️ [MANUAL MODE] Opportunity approved in entry window, but automated trade execution is FROZEN. Standing by for manual trigger via Telegram.'
+              );
+              await sleep(15000);
+              continue;
+            }
+
+            // Pre-trade risk check
+            await this.riskManager.validatePreTrade(evaluated);
 
               // Build Top 5 funding spread snapshot text before entering
               const top5 = opportunities.slice(0, 5);
@@ -419,7 +438,6 @@ export class FundingArbitrageApp {
               });
 
               // Detailed pre-trade execution breakdown
-              const coin = evaluated.opportunity.mapping.normalized_symbol;
               const direction = evaluated.profitability.direction;
               const biAction = direction === 'SHORT_BINANCE_LONG_BYBIT' ? 'SHORT (SELL)' : 'LONG (BUY)';
               const byAction = direction === 'SHORT_BINANCE_LONG_BYBIT' ? 'LONG (BUY)' : 'SHORT (SELL)';
@@ -430,7 +448,6 @@ export class FundingArbitrageApp {
               const appliedLeverage = evaluated.sizing.appliedLeverage;
               const biMargin = evaluated.sizing.binanceActualNotionalUsd.dividedBy(appliedLeverage).toFixed(2);
               const byMargin = evaluated.sizing.bybitActualNotionalUsd.dividedBy(appliedLeverage).toFixed(2);
-              const edgePct = parseFloat(evaluated.opportunity.fundingDiffPct.toString()).toFixed(4);
               const netProfitUsd = evaluated.profitability.expectedNetProfitUsd.toFixed(2);
               const biCashFlow = evaluated.profitability.expectedFundingCashFlowBinance.toFixed(3);
               const byCashFlow = evaluated.profitability.expectedFundingCashFlowBybit.toFixed(3);
@@ -508,6 +525,20 @@ export class FundingArbitrageApp {
     }
     this.releaseLock();
     this.db.close();
+  }
+
+  freezeAutoExecution(): void {
+    this.isAutoExecutionFrozen = true;
+    logger.warn('Automated trade execution FROZEN (Manual Mode Active)');
+  }
+
+  unfreezeAutoExecution(): void {
+    this.isAutoExecutionFrozen = false;
+    logger.warn('Automated trade execution UNFROZEN (Automatic Execution Active)');
+  }
+
+  isAutoExecutionFrozenState(): boolean {
+    return this.isAutoExecutionFrozen;
   }
 
   getHealthMonitor(): SystemHealth {

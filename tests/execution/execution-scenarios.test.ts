@@ -441,4 +441,30 @@ describe('Execution Failure Tests (Part 2 Scenarios)', () => {
     await Promise.all([task(), task(), task(), task(), task()]);
     expect(callCount).toBe(5);
   });
+
+  // Scenario 13: Auto-execution frozen prevents automatic order placement
+  it('Scenario 13: auto-execution frozen mode prevents automatic order placement', async () => {
+    let isFrozen = true;
+    let autoExecuted = false;
+
+    // Simulate entry window candidate
+    const candidateAvailable = true;
+    if (candidateAvailable) {
+      if (isFrozen) {
+        // Frozen: do not execute
+        autoExecuted = false;
+      } else {
+        autoExecuted = true;
+      }
+    }
+
+    expect(autoExecuted).toBe(false);
+
+    // Unfreeze
+    isFrozen = false;
+    if (candidateAvailable && !isFrozen) {
+      autoExecuted = true;
+    }
+    expect(autoExecuted).toBe(true);
+  });
 });

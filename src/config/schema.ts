@@ -39,6 +39,7 @@ export const AppConfigSchema = z.object({
       cumulative_carry_enabled: z.boolean().default(true),
       carry_min_retention_edge_pct: z.number().nonnegative().default(0.05),
       margin_rebalance_warning_usd: z.number().nonnegative().default(3.50),
+      auto_execute_trades: z.boolean().default(false),
     })
     .default({
       entry_lead_minutes: 10,
@@ -50,6 +51,7 @@ export const AppConfigSchema = z.object({
       cumulative_carry_enabled: true,
       carry_min_retention_edge_pct: 0.05,
       margin_rebalance_warning_usd: 3.50,
+      auto_execute_trades: false,
     }),
   execution: z
     .object({
