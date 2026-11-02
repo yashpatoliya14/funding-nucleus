@@ -336,17 +336,37 @@ export class FundingArbitrageApp {
             'Top funding opportunity detected'
           );
 
-          // 3. Check if within entry window
-          const inWindow = FundingScheduler.isWithinEntryWindow(
-            topOpp.targetFundingTimeMs,
-            this.config.appConfig.strategy.entry_lead_minutes
-          );
+          // Evaluate top candidates in descending order of spread to find an approved candidate in the entry window
+          let approvedCandidate: any = null;
+          const candidatesToEvaluate = opportunities.slice(0, 5);
 
-          if (inWindow) {
-            logger.info({ coin: topOpp.mapping.normalized_symbol }, 'Opportunity is within entry window! Evaluating candidate...');
-            const evaluated = await this.opportunityFilter.evaluateOpportunity(topOpp);
+          for (const opp of candidatesToEvaluate) {
+            const inWindow = FundingScheduler.isWithinEntryWindow(
+              opp.targetFundingTimeMs,
+              this.config.appConfig.strategy.entry_lead_minutes
+            );
 
-            if (evaluated.isApproved) {
+            if (inWindow) {
+              logger.info({ coin: opp.mapping.normalized_symbol }, 'Opportunity is within entry window! Evaluating candidate...');
+              const evaluated = await this.opportunityFilter.evaluateOpportunity(opp);
+
+              if (evaluated.isApproved) {
+                approvedCandidate = evaluated;
+                break;
+              } else {
+                logger.info({ coin: opp.mapping.normalized_symbol, reason: evaluated.rejectionReason }, 'Opportunity filter rejected candidate');
+              }
+            } else {
+              const msRemaining = FundingScheduler.msUntilEntryWindow(
+                opp.targetFundingTimeMs,
+                this.config.appConfig.strategy.entry_lead_minutes
+              );
+              logger.debug({ coin: opp.mapping.normalized_symbol, minutesRemaining: (msRemaining / 60000).toFixed(1) }, 'Opportunity waiting for entry window');
+            }
+          }
+
+          if (approvedCandidate) {
+            const evaluated = approvedCandidate;
               // Pre-trade risk check
               await this.riskManager.validatePreTrade(evaluated);
 
@@ -430,15 +450,6 @@ export class FundingArbitrageApp {
               // Execute trade lifecycle
               const isSimulated = this.config.appConfig.app.mode === 'paper';
               await this.executionEngine.executeTrade(evaluated, isSimulated);
-            } else {
-              logger.debug({ reason: evaluated.rejectionReason }, 'Opportunity did not meet filter criteria');
-            }
-          } else {
-            const msRemaining = FundingScheduler.msUntilEntryWindow(
-              topOpp.targetFundingTimeMs,
-              this.config.appConfig.strategy.entry_lead_minutes
-            );
-            logger.debug({ minutesRemaining: (msRemaining / 60000).toFixed(1) }, 'Opportunity waiting for entry window');
           }
         }
 

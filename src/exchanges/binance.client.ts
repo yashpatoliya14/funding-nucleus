@@ -33,6 +33,9 @@ export class BinanceClient implements IExchangeClient {
   private timeOffsetMs: number = 0;
   private hasSyncedTime: boolean = false;
   private isDualSidePosition: boolean | null = null; // Hedge Mode vs One-Way Mode
+  private fundingIntervalCache: Map<string, number> = new Map();
+  private lastFundingIntervalFetchMs: number = 0;
+  private readonly INTERVAL_CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
   constructor(options: BinanceClientOptions) {
     initializeDns();
@@ -138,7 +141,11 @@ export class BinanceClient implements IExchangeClient {
     const instruments: InstrumentInfo[] = [];
 
     for (const s of data.symbols) {
-      if (s.contractType !== 'PERPETUAL' || s.quoteAsset !== 'USDT') continue;
+      const isPerp =
+        s.contractType === 'PERPETUAL' ||
+        s.contractType === 'TRADIFI_PERPETUAL' ||
+        (typeof s.contractType === 'string' && s.contractType.includes('PERPETUAL'));
+      if (!isPerp || s.quoteAsset !== 'USDT') continue;
 
       let minQty = toDecimal('0.001');
       let qtyStep = toDecimal('0.001');
@@ -177,13 +184,37 @@ export class BinanceClient implements IExchangeClient {
   }
 
   async getFundingRates(): Promise<FundingRateInfo[]> {
-    const list = await this.requestApi<any[]>('GET', '/fapi/v1/premiumIndex');
+    const now = Date.now();
+    let fetchFundingInfoPromise: Promise<void> = Promise.resolve();
+
+    if (now - this.lastFundingIntervalFetchMs > this.INTERVAL_CACHE_TTL_MS || this.fundingIntervalCache.size === 0) {
+      fetchFundingInfoPromise = this.requestApi<any[]>('GET', '/fapi/v1/fundingInfo')
+        .then((fList) => {
+          if (Array.isArray(fList)) {
+            for (const f of fList) {
+              if (f.symbol && typeof f.fundingIntervalHours === 'number') {
+                this.fundingIntervalCache.set(f.symbol, f.fundingIntervalHours);
+              }
+            }
+            this.lastFundingIntervalFetchMs = Date.now();
+          }
+        })
+        .catch((err) => {
+          logger.warn({ err: err?.message }, 'Failed to query Binance /fapi/v1/fundingInfo, falling back to cached intervals');
+        });
+    }
+
+    const [list] = await Promise.all([
+      this.requestApi<any[]>('GET', '/fapi/v1/premiumIndex'),
+      fetchFundingInfoPromise,
+    ]);
+
     return list.map((item) => ({
       exchange: this.exchangeName,
       symbol: item.symbol,
       fundingRate: toDecimal(item.lastFundingRate || '0'),
       fundingTimeMs: Number(item.nextFundingTime),
-      fundingIntervalHours: item.fundingIntervalHours ? Number(item.fundingIntervalHours) : 8,
+      fundingIntervalHours: this.fundingIntervalCache.get(item.symbol) ?? (item.fundingIntervalHours ? Number(item.fundingIntervalHours) : 8),
       markPrice: toDecimal(item.markPrice || '0'),
       interestRate: toDecimal(item.interestRate || '0'),
     }));

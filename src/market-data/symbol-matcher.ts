@@ -31,6 +31,7 @@ export class SymbolMatcher {
     for (const inst of bybitInsts) {
       if (inst.isActive && inst.contractType === 'PERPETUAL' && inst.quoteAsset === 'USDT' && inst.settleAsset === 'USDT') {
         bybitMap.set(inst.baseAsset.toUpperCase(), inst);
+        bybitMap.set(inst.symbol.toUpperCase(), inst);
       }
     }
 
@@ -42,7 +43,7 @@ export class SymbolMatcher {
       }
 
       const baseAsset = bInst.baseAsset.toUpperCase();
-      const bybitInst = bybitMap.get(baseAsset);
+      const bybitInst = bybitMap.get(bInst.symbol.toUpperCase()) || bybitMap.get(baseAsset);
 
       if (!bybitInst) {
         continue;

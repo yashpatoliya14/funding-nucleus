@@ -393,7 +393,36 @@ export class TelegramCommander {
         return;
       }
 
-      const topOpp = opps[0];
+      // Check top candidates in descending order of spread to find the highest-ranking approved trade
+      let topOpp = opps[0];
+      let evaluated: any = null;
+      let candidateRank = 1;
+      const skippedNotes: string[] = [];
+
+      if (this.evaluateOpportunity) {
+        for (let i = 0; i < Math.min(5, opps.length); i++) {
+          try {
+            const evalResult = await this.evaluateOpportunity(opps[i]);
+            if (evalResult && evalResult.isApproved) {
+              topOpp = opps[i];
+              evaluated = evalResult;
+              candidateRank = i + 1;
+              break;
+            } else {
+              const reason = evalResult?.rejectionReason || 'Profit below threshold';
+              const sym = opps[i].mapping?.normalized_symbol || opps[i].symbol || `Rank ${i + 1}`;
+              skippedNotes.push(`• *#${i + 1} ${sym}:* ${reason}`);
+              if (i === 0) {
+                // Save rank #1 evaluation as fallback if none approved
+                evaluated = evalResult;
+              }
+            }
+          } catch (evalErr: any) {
+            skippedNotes.push(`• *#${i + 1}:* ${evalErr?.message || evalErr}`);
+          }
+        }
+      }
+
       const coin = topOpp.mapping ? topOpp.mapping.normalized_symbol : topOpp.symbol;
       const bRate = (parseFloat((topOpp.binanceRate || 0).toString()) * 100).toFixed(4);
       const byRate = (parseFloat((topOpp.bybitRate || 0).toString()) * 100).toFixed(4);
@@ -422,75 +451,72 @@ export class TelegramCommander {
       let profitText = '';
       let statusText = '⏳ Waiting for Entry Window';
 
-      if (this.evaluateOpportunity) {
-        try {
-          const evaluated = await this.evaluateOpportunity(topOpp);
-          if (evaluated && evaluated.sizing && evaluated.sizing.appliedLeverage) {
-            const appliedLev = evaluated.sizing.appliedLeverage;
-            const bNotional = evaluated.sizing.binanceActualNotionalUsd ? evaluated.sizing.binanceActualNotionalUsd.toFixed(2) : (this.marginPerLegUsd * appliedLev).toFixed(2);
-            const byNotional = evaluated.sizing.bybitActualNotionalUsd ? evaluated.sizing.bybitActualNotionalUsd.toFixed(2) : (this.marginPerLegUsd * appliedLev).toFixed(2);
-            const bQty = evaluated.sizing.binanceQuantity ? evaluated.sizing.binanceQuantity.toFixed(4) : '0';
-            const byQty = evaluated.sizing.bybitQuantity ? evaluated.sizing.bybitQuantity.toFixed(4) : '0';
-            const bMargin = (parseFloat(bNotional) / appliedLev).toFixed(2);
-            const byMargin = (parseFloat(byNotional) / appliedLev).toFixed(2);
+      if (evaluated && evaluated.sizing && evaluated.sizing.appliedLeverage) {
+        const appliedLev = evaluated.sizing.appliedLeverage;
+        const bNotional = evaluated.sizing.binanceActualNotionalUsd ? evaluated.sizing.binanceActualNotionalUsd.toFixed(2) : (this.marginPerLegUsd * appliedLev).toFixed(2);
+        const byNotional = evaluated.sizing.bybitActualNotionalUsd ? evaluated.sizing.bybitActualNotionalUsd.toFixed(2) : (this.marginPerLegUsd * appliedLev).toFixed(2);
+        const bQty = evaluated.sizing.binanceQuantity ? evaluated.sizing.binanceQuantity.toFixed(4) : '0';
+        const byQty = evaluated.sizing.bybitQuantity ? evaluated.sizing.bybitQuantity.toFixed(4) : '0';
+        const bMargin = (parseFloat(bNotional) / appliedLev).toFixed(2);
+        const byMargin = (parseFloat(byNotional) / appliedLev).toFixed(2);
 
-            const biSide = evaluated.profitability?.direction === 'SHORT_BINANCE_LONG_BYBIT' ? 'SHORT' : 'LONG';
-            const bySide = evaluated.profitability?.direction === 'SHORT_BINANCE_LONG_BYBIT' ? 'LONG' : 'SHORT';
+        const biSide = evaluated.profitability?.direction === 'SHORT_BINANCE_LONG_BYBIT' ? 'SHORT' : 'LONG';
+        const bySide = evaluated.profitability?.direction === 'SHORT_BINANCE_LONG_BYBIT' ? 'LONG' : 'SHORT';
 
-            sizingText = [
-              `• *Sizing (${appliedLev}x Leverage):*`,
-              `  - Binance: ${biSide} \`${bQty} ${coin}\` (~$${bNotional} | $${bMargin} margin)`,
-              `  - Bybit: ${bySide} \`${byQty} ${coin}\` (~$${byNotional} | $${byMargin} margin)`,
-            ].join('\n');
+        sizingText = [
+          `• *Sizing (${appliedLev}x Leverage):*`,
+          `  - Binance: ${biSide} \`${bQty} ${coin}\` (~${bNotional} | ${bMargin} margin)`,
+          `  - Bybit: ${bySide} \`${byQty} ${coin}\` (~${byNotional} | ${byMargin} margin)`,
+        ].join('\n');
 
-            if (evaluated.profitability && evaluated.profitability.expectedNetProfitUsd) {
-              const netProfit = parseFloat(evaluated.profitability.expectedNetProfitUsd.toString());
-              const netProfitSign = netProfit >= 0 ? '+' : '';
-              const netProfitStr = `${netProfitSign}$${netProfit.toFixed(4)}`;
+        if (evaluated.profitability && evaluated.profitability.expectedNetProfitUsd) {
+          const netProfit = parseFloat(evaluated.profitability.expectedNetProfitUsd.toString());
+          const netProfitSign = netProfit >= 0 ? '+' : '';
+          const netProfitStr = `${netProfitSign}${netProfit.toFixed(4)}`;
 
-              const entryFees = evaluated.profitability.estimatedEntryFees;
-              const exitFees = evaluated.profitability.estimatedExitFees;
-              const totalFees = entryFees && exitFees
-                ? entryFees.plus(exitFees).toFixed(4)
-                : '0.0000';
+          const entryFees = evaluated.profitability.estimatedEntryFees;
+          const exitFees = evaluated.profitability.estimatedExitFees;
+          const totalFees = entryFees && exitFees
+            ? entryFees.plus(exitFees).toFixed(4)
+            : '0.0000';
 
-              const entrySlip = evaluated.profitability.estimatedEntrySlippageUsd;
-              const exitSlip = evaluated.profitability.estimatedExitSlippageUsd;
-              const totalSlippage = entrySlip && exitSlip
-                ? entrySlip.plus(exitSlip).toFixed(4)
-                : '0.0000';
+          const entrySlip = evaluated.profitability.estimatedEntrySlippageUsd;
+          const exitSlip = evaluated.profitability.estimatedExitSlippageUsd;
+          const totalSlippage = entrySlip && exitSlip
+            ? entrySlip.plus(exitSlip).toFixed(4)
+            : '0.0000';
 
-              const grossFunding = evaluated.profitability.netFundingCashFlow
-                ? evaluated.profitability.netFundingCashFlow.toFixed(4)
-                : '0.0000';
+          const grossFunding = evaluated.profitability.netFundingCashFlow
+            ? evaluated.profitability.netFundingCashFlow.toFixed(4)
+            : '0.0000';
 
-              profitText = [
-                `• *Profit & Cost Breakdown:*`,
-                `  - Gross Funding: \`+$${grossFunding} USDT\``,
-                `  - Trading Fees Takes: \`-$${totalFees} USDT\` (Entry + Exit taker fees)`,
-                `  - Slippage Cost Takes: \`-$${totalSlippage} USDT\` (Orderbook execution spread)`,
-                `  - Expected Net Profit: \`${netProfitStr} USDT\``,
-              ].join('\n');
+          profitText = [
+            `• *Profit & Cost Breakdown:*`,
+            `  - Gross Funding: \`+${grossFunding} USDT\``,
+            `  - Trading Fees Takes: \`-${totalFees} USDT\` (Entry + Exit taker fees)`,
+            `  - Slippage Cost Takes: \`-${totalSlippage} USDT\` (Orderbook execution spread)`,
+            `  - Expected Net Profit: \`${netProfitStr} USDT\``,
+          ].join('\n');
 
-              if (netProfit <= 0) {
-                statusText = `❌ *Rejected:* Expected net profit (${netProfitStr}) is in minus. Trade will NOT be taken.`;
-              } else if (evaluated.isApproved) {
-                statusText = `✅ *Approved:* Expected profit (${netProfitStr}) is positive. Will execute in ${entryStr}.`;
-              } else if (evaluated.rejectionReason) {
-                statusText = `⚠️ *Filter Pending:* ${evaluated.rejectionReason}`;
-              }
-            }
-          } else if (evaluated && evaluated.rejectionReason) {
-            statusText = `⚠️ *Filter Status:* ${evaluated.rejectionReason}`;
+          if (netProfit <= 0) {
+            statusText = `❌ *Rejected:* Expected net profit (${netProfitStr}) is in minus. Trade will NOT be taken.`;
+          } else if (evaluated.isApproved) {
+            statusText = `✅ *Approved:* Expected profit (${netProfitStr}) is positive. Will execute in ${entryStr}.`;
+          } else if (evaluated.rejectionReason) {
+            statusText = `⚠️ *Filter Pending:* ${evaluated.rejectionReason}`;
           }
-        } catch (evalErr: any) {
-          statusText = `⚠️ *Evaluation Error:* ${evalErr?.message || evalErr}`;
         }
+      } else if (evaluated && evaluated.rejectionReason) {
+        statusText = `⚠️ *Filter Status:* ${evaluated.rejectionReason}`;
       }
 
+      const rankNote = candidateRank > 1
+        ? `\nℹ️ *Selection:* Rank #${candidateRank} selected because higher-ranking candidates failed filter validation:\n${skippedNotes.slice(0, candidateRank - 1).join('\n')}\n`
+        : '';
+
       const msg = [
-        `🎯 *Next Trade Plan*`,
-        ``,
+        `🎯 *Next Trade Plan* (Rank #${candidateRank})`,
+        rankNote,
         `• *Coin:* \`${coin}\``,
         `• *Funding Spread:* \`${edgePct}%\` (APR: \`${apr}%\`)`,
         `  - Binance: \`${bSign}${bRate}%\``,

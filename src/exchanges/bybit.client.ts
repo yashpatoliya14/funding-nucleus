@@ -133,14 +133,35 @@ export class BybitClient implements IExchangeClient {
   }
 
   async getInstruments(): Promise<InstrumentInfo[]> {
-    const data = await this.requestApi<{ list: any[] }>('GET', '/v5/market/instruments-info', {
-      category: 'linear',
-      status: 'Trading',
-    });
+    const rawList: any[] = [];
+    let cursor: string | undefined = undefined;
+
+    do {
+      const params: any = {
+        category: 'linear',
+        status: 'Trading',
+        limit: 1000,
+      };
+      if (cursor) {
+        params.cursor = cursor;
+      }
+
+      const data = await this.requestApi<{ list: any[]; nextPageCursor?: string }>(
+        'GET',
+        '/v5/market/instruments-info',
+        params
+      );
+
+      if (data && Array.isArray(data.list)) {
+        rawList.push(...data.list);
+      }
+
+      cursor = data && data.nextPageCursor && data.nextPageCursor.trim() !== '' ? data.nextPageCursor : undefined;
+    } while (cursor);
 
     const instruments: InstrumentInfo[] = [];
 
-    for (const s of data.list || []) {
+    for (const s of rawList) {
       if (s.quoteCoin !== 'USDT' || s.contractType !== 'LinearPerpetual') continue;
 
       const lotFilter = s.lotSizeFilter || {};
