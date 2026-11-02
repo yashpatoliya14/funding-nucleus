@@ -148,11 +148,11 @@ export class ManualTradeService {
             await this.telegram.sendMessage(alertMsg);
         }
         catch { }
-        // 8. Execute asynchronously via ExecutionEngine
-        const tradePromise = this.executionEngine.executeTrade(evaluated, isSimulated);
-        tradePromise.catch((err) => {
-            logger.error({ coin, err: err?.message }, 'Manual trade lifecycle failed');
-        });
+        // 8. Wait for the exchange lifecycle so callers receive the actual order result.
+        const executedTrade = await this.executionEngine.executeTrade(evaluated, isSimulated);
+        if (executedTrade.state === 'FAILED' || executedTrade.state === 'ABORT_AND_FLATTEN') {
+            throw new Error(executedTrade.error_message || `Trade execution failed for ${coin}`);
+        }
         return {
             success: true,
             tradeId: `trade-manual-${Date.now()}`,
