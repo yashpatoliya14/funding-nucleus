@@ -162,6 +162,8 @@ describe('Integration Tests: Telegram Interactive Dashboard & 5x Trading', () =>
     expect(details).toContain('Leverage');
     expect(details).toContain('Entry:');
     expect(details).toContain('Mark:');
+    expect(details).toContain('Current Funding Rate');
+    expect(details).toContain('Funding Collected/Paid');
   });
 
   it('toggles freeze and unfreeze execution mode via Telegram command', async () => {

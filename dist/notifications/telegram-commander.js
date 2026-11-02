@@ -979,6 +979,10 @@ export class TelegramCommander {
                 this.binanceClient.getPositions(),
                 this.bybitClient.getPositions(),
             ]);
+            const [binanceRates, bybitRates] = await Promise.allSettled([
+                this.binanceClient.getFundingRates(),
+                this.bybitClient.getFundingRates(),
+            ]);
             const bActive = binancePos.status === 'fulfilled'
                 ? binancePos.value.filter((p) => p.side !== 'FLAT' && !p.quantity.isZero())
                 : [];
@@ -990,7 +994,23 @@ export class TelegramCommander {
                 return;
             }
             const allActive = [...bActive, ...byActive];
+            const activeTrades = this.tradeRepo.getActiveTrades();
+            const fundingRequests = allActive.map((position) => {
+                const trade = activeTrades.find((item) => item.binance_symbol === position.symbol || item.bybit_symbol === position.symbol);
+                const startTime = trade ? new Date(trade.created_at).getTime() : undefined;
+                const client = position.exchange === 'binance' ? this.binanceClient : this.bybitClient;
+                return client.getFundingHistory(position.symbol, startTime, 50);
+            });
+            const fundingResults = await Promise.allSettled(fundingRequests);
             const totalUnrealizedPnl = allActive.reduce((total, position) => total + Number(position.unrealizedPnl), 0);
+            const fundingByPosition = allActive.map((position, index) => {
+                const result = fundingResults[index];
+                const collected = result?.status === 'fulfilled'
+                    ? result.value.reduce((total, item) => total + Number(item.paymentAmount), 0)
+                    : 0;
+                return { position, collected };
+            });
+            const totalFundingCollected = fundingByPosition.reduce((total, item) => total + item.collected, 0);
             const totalNotional = allActive.reduce((total, position) => total + Number(position.quantity.times(position.markPrice)), 0);
             const totalLeverage = allActive.length > 0
                 ? allActive.reduce((total, position) => total + position.leverage, 0) / allActive.length
@@ -1003,14 +1023,21 @@ export class TelegramCommander {
                 `${pnlIcon} *Total Unrealized PnL:* \`${pnlSign}$${totalUnrealizedPnl.toFixed(4)} USDT\``,
                 `💼 *Open Notional:* \`$${totalNotional.toFixed(2)} USDT\``,
                 `⚖️ *Average Leverage:* \`${totalLeverage.toFixed(2)}x\``,
+                `💰 *Funding Collected/Paid:* \`${totalFundingCollected >= 0 ? '+' : ''}$${totalFundingCollected.toFixed(4)} USDT\``,
                 `📌 *Open Legs:* \`${allActive.length}\``,
                 '',
             ];
-            for (const p of bActive) {
-                lines.push(`🏦 *Binance — ${p.symbol}*`, `• Side: \`${p.side}\` | Quantity: \`${p.quantity.toString()}\``, `• Leverage: \`${p.leverage}x\` | Notional: \`$${Number(p.quantity.times(p.markPrice)).toFixed(2)}\``, `• Entry: \`$${p.entryPrice.toFixed(4)}\` | Mark: \`$${p.markPrice.toFixed(4)}\``, `• Unrealized PnL: \`${Number(p.unrealizedPnl) >= 0 ? '+' : ''}$${Number(p.unrealizedPnl).toFixed(4)} USDT\``, '');
-            }
-            for (const p of byActive) {
-                lines.push(`🏦 *Bybit — ${p.symbol}*`, `• Side: \`${p.side}\` | Quantity: \`${p.quantity.toString()}\``, `• Leverage: \`${p.leverage}x\` | Notional: \`$${Number(p.quantity.times(p.markPrice)).toFixed(2)}\``, `• Entry: \`$${p.entryPrice.toFixed(4)}\` | Mark: \`$${p.markPrice.toFixed(4)}\``, `• Unrealized PnL: \`${Number(p.unrealizedPnl) >= 0 ? '+' : ''}$${Number(p.unrealizedPnl).toFixed(4)} USDT\``, '');
+            for (const { position: p, collected } of fundingByPosition) {
+                const rates = p.exchange === 'binance' ? binanceRates : bybitRates;
+                const rate = rates.status === 'fulfilled'
+                    ? rates.value.find((item) => item.symbol === p.symbol)
+                    : undefined;
+                const currentRatePct = rate ? Number(rate.fundingRate.times(100)) : 0;
+                const nextFunding = rate?.fundingTimeMs
+                    ? new Date(rate.fundingTimeMs).toISOString().replace('T', ' ').slice(0, 19) + ' UTC'
+                    : 'Unavailable';
+                const rateSign = currentRatePct >= 0 ? '+' : '';
+                lines.push(`🏦 *${p.exchange === 'binance' ? 'Binance' : 'Bybit'} — ${p.symbol}*`, `• Side: \`${p.side}\` | Quantity: \`${p.quantity.toString()}\``, `• Leverage: \`${p.leverage}x\` | Notional: \`$${Number(p.quantity.times(p.markPrice)).toFixed(2)}\``, `• Entry: \`$${p.entryPrice.toFixed(4)}\` | Mark: \`$${p.markPrice.toFixed(4)}\``, `• Unrealized PnL: \`${Number(p.unrealizedPnl) >= 0 ? '+' : ''}$${Number(p.unrealizedPnl).toFixed(4)} USDT\``, `• Current Funding Rate: \`${rateSign}${currentRatePct.toFixed(5)}%\``, `• Next Funding: \`${nextFunding}\``, `• Funding Collected/Paid: \`${collected >= 0 ? '+' : ''}$${collected.toFixed(4)} USDT\``, '');
             }
             const inline_keyboard = [
                 [{ text: '🚨 Flatten All (100% USDT)', callback_data: 'FLATTEN_ALL' }],
