@@ -219,15 +219,16 @@ export class TelegramCommander {
   }
 
   private async handleMessage(text: string): Promise<void> {
-    const parts = text.trim().split(/\s+/);
-    const firstWord = parts[0] || '';
-    const rawCmd = (firstWord.toLowerCase().replace('/', '').split('@')[0] || '').trim();
-    logger.info({ rawCmd, fullText: text }, 'Received Telegram command from authorized user');
+    const rawTrimmed = text.trim();
+    const lower = rawTrimmed.toLowerCase();
+    const parts = rawTrimmed.split(/\s+/);
+    const firstWord = (parts[0] || '').toLowerCase().replace(/^\//, '').split('@')[0] || '';
+    logger.info({ rawCmd: firstWord, fullText: rawTrimmed }, 'Received Telegram command from authorized user');
 
     this.isProcessingCommand = true;
     try {
-      // Custom command with arguments: "trade <symbol> <margin>"
-      if (rawCmd === 'trade' && parts.length >= 2) {
+      // Custom command with arguments: "trade <symbol> <margin>" or "/trade <symbol> <margin>"
+      if ((firstWord === 'trade' || lower.startsWith('/trade') || lower.startsWith('trade ')) && parts.length >= 2) {
         const symbol = (parts[1] || '').toUpperCase();
         const margin = parts[2] ? parseFloat(parts[2]) : 10;
         if (symbol) {
@@ -236,8 +237,8 @@ export class TelegramCommander {
         return;
       }
 
-      // Custom command: "7d <symbol>"
-      if ((rawCmd === '7d' || rawCmd === 'history') && parts.length >= 2) {
+      // Custom command: "7d <symbol>" or "/7d <symbol>" or "/history <symbol>"
+      if ((firstWord === '7d' || firstWord === 'history' || lower.startsWith('/7d') || lower.startsWith('/history')) && parts.length >= 2) {
         const symbol = (parts[1] || '').toUpperCase();
         if (symbol) {
           await this.handlePairSelected(symbol);
@@ -245,91 +246,101 @@ export class TelegramCommander {
         return;
       }
 
-      switch (rawCmd) {
-        case 'dashboard':
-        case 'dash':
-        case 'top10':
-        case 'start':
-        case 'menu':
-          await this.handleDashboard();
-          break;
-
-        case 'top':
-        case 'top5':
-        case 'diff':
-        case 'rates':
-        case 'funding':
-          await this.handleTop5();
-          break;
-
-        case 'wallet':
-        case 'balance':
-        case 'balances':
-          await this.handleWallet();
-          break;
-
-        case 'status':
-        case 'info':
-        case 'health':
-          await this.handleStatus();
-          break;
-
-        case 'next':
-        case 'planned':
-        case 'plan':
-        case 'target':
-          await this.handleNextPlannedTrade();
-          break;
-
-        case 'trades':
-        case 'positions':
-        case 'pos':
-          await this.handleTrades();
-          break;
-
-        case 'flatten':
-        case 'kill':
-        case 'emergency':
-          await this.handleEmergencyFlatten();
-          break;
-
-        case 'testorder':
-        case 'test':
-        case 'testtrade':
-          await this.handleDualTestOrder();
-          break;
-
-        case 'freeze':
-        case 'pause':
-          if (this.freezeAutoExecution) {
-            this.freezeAutoExecution();
-            await this.telegramNotifier.sendMessage('❄️ *Automated trade execution is now FROZEN (Manual Mode Active).* Bot will not place trades autonomously. Use the Telegram dashboard to trade.');
-          } else {
-            await this.telegramNotifier.sendMessage('❄️ *Automated trade execution is FROZEN.*');
-          }
-          break;
-
-        case 'unfreeze':
-        case 'resume':
-          if (this.unfreezeAutoExecution) {
-            this.unfreezeAutoExecution();
-            await this.telegramNotifier.sendMessage('🟢 *Automated trade execution is now UNFROZEN.* Bot will automatically execute approved candidates in entry window.');
-          } else {
-            await this.telegramNotifier.sendMessage('🟢 *Automated trade execution is enabled.*');
-          }
-          break;
-
-        case 'help':
-        case 'commands':
-          await this.handleHelp();
-          break;
-
-        default:
-          await this.telegramNotifier.sendMessage(
-            `❓ Unknown command: \`${text}\`\n\nSend one of these commands:\n• *dashboard* — Interactive Top 10 Dashboard with 5x trade buttons\n• *next* — Next trade plan & profit forecast\n• *wallet* — Binance & Bybit balances & margin\n• *top5* — Top 5 funding spreads\n• *status* — Bot status & today's PnL\n• *trade <pair> <margin>* — Execute 5x trade (e.g. \`trade AKE 10\`)\n• *flatten* — 🚨 Emergency close all positions (100% USDT)`
-          );
-          break;
+      // 1. Dashboard & Top 10
+      if (
+        lower.includes('dashboard') ||
+        lower.includes('top 10') ||
+        firstWord === 'dashboard' ||
+        firstWord === 'dash' ||
+        firstWord === 'top10' ||
+        firstWord === 'start' ||
+        firstWord === 'menu'
+      ) {
+        await this.handleDashboard();
+        return;
       }
+
+      // 2. Top 10 Quick Spread View
+      if (
+        firstWord === 'top' ||
+        firstWord === 'top5' ||
+        firstWord === 'diff' ||
+        firstWord === 'rates' ||
+        firstWord === 'funding'
+      ) {
+        await this.handleTop10();
+        return;
+      }
+
+      // 3. Unfreeze (must check before freeze)
+      if (lower.includes('unfreeze') || lower.includes('resume') || firstWord === 'unfreeze') {
+        if (this.unfreezeAutoExecution) {
+          this.unfreezeAutoExecution();
+          await this.telegramNotifier.sendMessage('🟢 *Automated trade execution is now UNFROZEN.* Bot will automatically execute approved candidates in entry window.');
+        } else {
+          await this.telegramNotifier.sendMessage('🟢 *Automated trade execution is enabled.*');
+        }
+        return;
+      }
+
+      // 4. Freeze
+      if (lower.includes('freeze') || lower.includes('pause') || firstWord === 'freeze') {
+        if (this.freezeAutoExecution) {
+          this.freezeAutoExecution();
+          await this.telegramNotifier.sendMessage('❄️ *Automated trade execution is now FROZEN (Manual Mode Active).* Bot will not place trades autonomously. Use the Telegram dashboard to trade.');
+        } else {
+          await this.telegramNotifier.sendMessage('❄️ *Automated trade execution is FROZEN.*');
+        }
+        return;
+      }
+
+      // 5. Wallet
+      if (lower.includes('wallet') || lower.includes('balance') || firstWord === 'wallet' || firstWord === 'balance' || firstWord === 'balances') {
+        await this.handleWallet();
+        return;
+      }
+
+      // 6. Status
+      if (lower.includes('status') || lower.includes('health') || firstWord === 'status' || firstWord === 'info' || firstWord === 'health') {
+        await this.handleStatus();
+        return;
+      }
+
+      // 7. Next planned trade
+      if (lower.includes('next') || lower.includes('planned') || firstWord === 'next' || firstWord === 'planned' || firstWord === 'plan' || firstWord === 'target') {
+        await this.handleNextPlannedTrade();
+        return;
+      }
+
+      // 8. Trades / positions
+      if (lower.includes('trades') || lower.includes('positions') || firstWord === 'trades' || firstWord === 'positions' || firstWord === 'pos') {
+        await this.handleTrades();
+        return;
+      }
+
+      // 9. Emergency flatten
+      if (lower.includes('flatten') || lower.includes('emergency') || firstWord === 'flatten' || firstWord === 'kill' || firstWord === 'emergency') {
+        await this.handleEmergencyFlatten();
+        return;
+      }
+
+      // 10. Test order
+      if (firstWord === 'testorder' || firstWord === 'test' || firstWord === 'testtrade') {
+        await this.handleDualTestOrder();
+        return;
+      }
+
+      // 11. Help
+      if (lower.includes('help') || lower.includes('command') || firstWord === 'help' || firstWord === 'commands' || firstWord === '?') {
+        await this.handleHelp();
+        return;
+      }
+
+      // Fallback
+      await this.telegramNotifier.sendMessageWithMarkup(
+        `❓ Unknown command: \`${text}\`\n\nTap a button below or send a command:\n• /dashboard — Interactive Top 10 Dashboard with 5x buttons\n• /top10 — Top 10 funding spreads & 7-day stats\n• /trade <pair> <margin> — Execute 5x trade (e.g. \`/trade AKE 10\`)\n• /history <pair> — 7-day funding history (e.g. \`/history BTC\`)\n• /next — Next trade plan & profit forecast\n• /wallet — Binance & Bybit balances & margin\n• /status — Bot health, mode & net PnL\n• /freeze — Freeze auto-trade (Manual Only)\n• /unfreeze — Unfreeze auto-trade (Autonomous)\n• /flatten — 🚨 Emergency close all positions (100% USDT)\n• /help — Full command guide`,
+        this.telegramNotifier.getDefaultReplyKeyboard()
+      );
     } finally {
       this.isProcessingCommand = false;
     }
