@@ -9,7 +9,7 @@ export interface ScannedOpportunity {
   mapping: DbSymbolMapping;
   binanceRate: Decimal;
   bybitRate: Decimal;
-  fundingDiffPct: Decimal; // (binanceRate - bybitRate) * 100
+  fundingDiffPct: Decimal; // Absolute spread as pct, normalized to the common settlement interval
   fundingDirection: 'SHORT_BINANCE_LONG_BYBIT' | 'LONG_BINANCE_SHORT_BYBIT';
   binanceFundingTimeMs: number;
   bybitFundingTimeMs: number;
@@ -17,6 +17,8 @@ export interface ScannedOpportunity {
   binanceMarkPrice: Decimal;
   bybitMarkPrice: Decimal;
   isAligned: boolean;
+  binanceIntervalHours: number;
+  bybitIntervalHours: number;
 }
 
 export class FundingScanner {
@@ -60,6 +62,10 @@ export class FundingScanner {
       const bInterval = bRate.fundingIntervalHours ?? 8;
       const byInterval = byRate.fundingIntervalHours ?? 8;
       if (bInterval !== byInterval) {
+        logger.debug(
+          { symbol: mapping.normalized_symbol, binanceInterval: bInterval, bybitInterval: byInterval },
+          'Skipping symbol: funding intervals differ between exchanges'
+        );
         continue;
       }
 
@@ -69,7 +75,7 @@ export class FundingScanner {
         continue;
       }
 
-      // Difference = Binance rate - Bybit rate
+      // Difference = Binance rate - Bybit rate (raw rates for this interval)
       const diff = bRate.fundingRate.minus(byRate.fundingRate);
       const diffPct = diff.times('100'); // Convert to percentage
 
@@ -80,11 +86,16 @@ export class FundingScanner {
         ? 'SHORT_BINANCE_LONG_BYBIT'
         : 'LONG_BINANCE_SHORT_BYBIT';
 
+      // Normalize the spread to 8h-equivalent for fair ranking across different intervals.
+      // A 0.1% spread on a 4h interval is worth 0.2% per 8h and should rank higher than 0.15% on 8h.
+      const normalizationFactor = toDecimal(8).dividedBy(bInterval);
+      const normalizedDiffPct = diffPct.abs().times(normalizationFactor);
+
       opportunities.push({
         mapping,
         binanceRate: bRate.fundingRate,
         bybitRate: byRate.fundingRate,
-        fundingDiffPct: diffPct.abs(),
+        fundingDiffPct: normalizedDiffPct,
         fundingDirection: direction,
         binanceFundingTimeMs: bRate.fundingTimeMs,
         bybitFundingTimeMs: byRate.fundingTimeMs,
@@ -92,6 +103,8 @@ export class FundingScanner {
         binanceMarkPrice: bRate.markPrice,
         bybitMarkPrice: byRate.markPrice,
         isAligned,
+        binanceIntervalHours: bInterval,
+        bybitIntervalHours: byInterval,
       });
     }
 
