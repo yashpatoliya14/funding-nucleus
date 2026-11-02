@@ -142,6 +142,28 @@ describe('Integration Tests: Telegram Interactive Dashboard & 5x Trading', () =>
     expect(dispatchedMessages[dispatchedMessages.length - 1]!.text).toContain('No open positions');
   });
 
+  it('shows live PnL, notional, quantity, leverage, and prices for open positions', async () => {
+    await binanceClient.placeMarketOrder({
+      clientOrderId: 'details-test-1',
+      symbol: 'BTCUSDT',
+      side: 'BUY',
+      orderType: 'MARKET',
+      quantity: toDecimal('0.01'),
+      isReduceOnly: false,
+    });
+
+    await (commander as any).handleMessage('📋 Current Trade Details');
+
+    const details = dispatchedMessages[dispatchedMessages.length - 1]!.text;
+    expect(details).toContain('CURRENT TRADE DETAILS');
+    expect(details).toContain('Total Unrealized PnL');
+    expect(details).toContain('Open Notional');
+    expect(details).toContain('Quantity');
+    expect(details).toContain('Leverage');
+    expect(details).toContain('Entry:');
+    expect(details).toContain('Mark:');
+  });
+
   it('toggles freeze and unfreeze execution mode via Telegram command', async () => {
     // Unfreeze command
     await (commander as any).handleMessage('unfreeze');

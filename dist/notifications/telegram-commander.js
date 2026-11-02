@@ -989,12 +989,28 @@ export class TelegramCommander {
                 await this.telegramNotifier.sendMessage('📊 No open positions on Binance or Bybit. All accounts flat (100% USDT).');
                 return;
             }
-            const lines = ['📊 *Active Hedged Positions:*', ''];
+            const allActive = [...bActive, ...byActive];
+            const totalUnrealizedPnl = allActive.reduce((total, position) => total + Number(position.unrealizedPnl), 0);
+            const totalNotional = allActive.reduce((total, position) => total + Number(position.quantity.times(position.markPrice)), 0);
+            const totalLeverage = allActive.length > 0
+                ? allActive.reduce((total, position) => total + position.leverage, 0) / allActive.length
+                : 0;
+            const pnlSign = totalUnrealizedPnl >= 0 ? '+' : '';
+            const pnlIcon = totalUnrealizedPnl >= 0 ? '🟢' : '🔴';
+            const lines = [
+                '📋 *CURRENT TRADE DETAILS*',
+                '━━━━━━━━━━━━━━━━━━━━',
+                `${pnlIcon} *Total Unrealized PnL:* \`${pnlSign}$${totalUnrealizedPnl.toFixed(4)} USDT\``,
+                `💼 *Open Notional:* \`$${totalNotional.toFixed(2)} USDT\``,
+                `⚖️ *Average Leverage:* \`${totalLeverage.toFixed(2)}x\``,
+                `📌 *Open Legs:* \`${allActive.length}\``,
+                '',
+            ];
             for (const p of bActive) {
-                lines.push(`• *Binance:* \`${p.symbol}\` ${p.side} \`${p.quantity.toString()}\` @ $${p.entryPrice.toString()}`);
+                lines.push(`🏦 *Binance — ${p.symbol}*`, `• Side: \`${p.side}\` | Quantity: \`${p.quantity.toString()}\``, `• Leverage: \`${p.leverage}x\` | Notional: \`$${Number(p.quantity.times(p.markPrice)).toFixed(2)}\``, `• Entry: \`$${p.entryPrice.toFixed(4)}\` | Mark: \`$${p.markPrice.toFixed(4)}\``, `• Unrealized PnL: \`${Number(p.unrealizedPnl) >= 0 ? '+' : ''}$${Number(p.unrealizedPnl).toFixed(4)} USDT\``, '');
             }
             for (const p of byActive) {
-                lines.push(`• *Bybit:* \`${p.symbol}\` ${p.side} \`${p.quantity.toString()}\` @ $${p.entryPrice.toString()}`);
+                lines.push(`🏦 *Bybit — ${p.symbol}*`, `• Side: \`${p.side}\` | Quantity: \`${p.quantity.toString()}\``, `• Leverage: \`${p.leverage}x\` | Notional: \`$${Number(p.quantity.times(p.markPrice)).toFixed(2)}\``, `• Entry: \`$${p.entryPrice.toFixed(4)}\` | Mark: \`$${p.markPrice.toFixed(4)}\``, `• Unrealized PnL: \`${Number(p.unrealizedPnl) >= 0 ? '+' : ''}$${Number(p.unrealizedPnl).toFixed(4)} USDT\``, '');
             }
             const inline_keyboard = [
                 [{ text: '🚨 Flatten All (100% USDT)', callback_data: 'FLATTEN_ALL' }],
