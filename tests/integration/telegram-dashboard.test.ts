@@ -121,19 +121,25 @@ describe('Integration Tests: Telegram Interactive Dashboard & 5x Trading', () =>
     const buttons = keyboard.keyboard.flat().map((button: { text: string }) => button.text);
 
     expect(buttons).toEqual([
-      '/dashboard',
-      '/top10',
-      '/trade',
-      '/history',
-      '/next',
-      '/wallet',
-      '/status',
-      '/trades',
-      '/freeze',
-      '/unfreeze',
-      '/flatten',
-      '/help',
+      '📊 Top 10 Dashboard',
+      '📈 Funding Spreads',
+      '⚡ Manual Trade',
+      '🗓️ 7-Day History',
+      '🎯 Next Trade Plan',
+      '💼 Wallet & Margin',
+      '🤖 Bot Status',
+      '📋 Current Trade Details',
+      '❄️ Freeze Auto-Trade',
+      '🟢 Unfreeze Auto-Trade',
+      '🚨 Emergency Flatten',
+      '❓ Help & Commands',
     ]);
+  });
+
+  it('routes the current trade details button to the positions view', async () => {
+    await (commander as any).handleMessage('📋 Current Trade Details');
+
+    expect(dispatchedMessages[dispatchedMessages.length - 1]!.text).toContain('No open positions');
   });
 
   it('toggles freeze and unfreeze execution mode via Telegram command', async () => {

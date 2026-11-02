@@ -179,28 +179,28 @@ export class TelegramNotifier {
     return {
       keyboard: [
         [
-          { text: '/dashboard' },
-          { text: '/top10' },
+          { text: '📊 Top 10 Dashboard' },
+          { text: '📈 Funding Spreads' },
         ],
         [
-          { text: '/trade' },
-          { text: '/history' },
+          { text: '⚡ Manual Trade' },
+          { text: '🗓️ 7-Day History' },
         ],
         [
-          { text: '/next' },
-          { text: '/wallet' },
+          { text: '🎯 Next Trade Plan' },
+          { text: '💼 Wallet & Margin' },
         ],
         [
-          { text: '/status' },
-          { text: '/trades' },
+          { text: '🤖 Bot Status' },
+          { text: '📋 Current Trade Details' },
         ],
         [
-          { text: '/freeze' },
-          { text: '/unfreeze' },
+          { text: '❄️ Freeze Auto-Trade' },
+          { text: '🟢 Unfreeze Auto-Trade' },
         ],
         [
-          { text: '/flatten' },
-          { text: '/help' },
+          { text: '🚨 Emergency Flatten' },
+          { text: '❓ Help & Commands' },
         ],
       ],
       resize_keyboard: true,

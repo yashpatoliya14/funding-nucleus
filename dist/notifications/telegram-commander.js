@@ -211,7 +211,35 @@ export class TelegramCommander {
         }
     }
     async handleMessage(text) {
-        const rawTrimmed = text.trim();
+        const commandAliases = {
+            '📊 top 10 dashboard': '/dashboard',
+            '📈 funding spreads': '/top10',
+            '⚡ manual trade': '/trade',
+            '🗓️ 7-day history': '/history',
+            '🎯 next trade plan': '/next',
+            '💼 wallet & margin': '/wallet',
+            '🤖 bot status': '/status',
+            '📋 current trade details': '/trades',
+            '❄️ freeze auto-trade': '/freeze',
+            '🟢 unfreeze auto-trade': '/unfreeze',
+            '🚨 emergency flatten': '/flatten',
+            '❓ help & commands': '/help',
+        };
+        const buttonText = text.trim().toLowerCase();
+        const rawTrimmed = commandAliases[buttonText] ||
+            (buttonText.includes('current trade') ? '/trades' : undefined) ||
+            (buttonText.includes('manual trade') ? '/trade' : undefined) ||
+            (buttonText.includes('dashboard') ? '/dashboard' : undefined) ||
+            (buttonText.includes('funding spreads') ? '/top10' : undefined) ||
+            (buttonText.includes('7-day history') ? '/history' : undefined) ||
+            (buttonText.includes('next trade') ? '/next' : undefined) ||
+            (buttonText.includes('wallet') ? '/wallet' : undefined) ||
+            (buttonText.includes('bot status') ? '/status' : undefined) ||
+            (buttonText.includes('freeze') && !buttonText.includes('unfreeze') ? '/freeze' : undefined) ||
+            (buttonText.includes('unfreeze') ? '/unfreeze' : undefined) ||
+            (buttonText.includes('flatten') ? '/flatten' : undefined) ||
+            (buttonText.includes('help') ? '/help' : undefined) ||
+            text.trim();
         const lower = rawTrimmed.toLowerCase();
         const parts = rawTrimmed.split(/\s+/);
         const firstWord = (parts[0] || '').toLowerCase().replace(/^\//, '').split('@')[0] || '';
@@ -219,7 +247,7 @@ export class TelegramCommander {
         this.isProcessingCommand = true;
         try {
             // 1. Trade command: "trade <symbol> <margin>" or "/trade <symbol> <margin>"
-            if (firstWord === 'trade' || lower.startsWith('/trade') || lower.startsWith('trade')) {
+            if (firstWord === 'trade') {
                 if (parts.length >= 2) {
                     const symbol = (parts[1] || '').toUpperCase();
                     const margin = parts[2] ? parseFloat(parts[2]) : 10;
@@ -239,7 +267,7 @@ export class TelegramCommander {
                 }
             }
             // 2. 7-Day History command: "7d <symbol>" or "/7d <symbol>" or "/history <symbol>"
-            if (firstWord === '7d' || firstWord === 'history' || lower.startsWith('/7d') || lower.startsWith('/history')) {
+            if (firstWord === '7d' || firstWord === 'history') {
                 if (parts.length >= 2) {
                     const symbol = (parts[1] || '').toUpperCase();
                     if (symbol) {
