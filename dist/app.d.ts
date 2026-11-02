@@ -1,0 +1,45 @@
+import { FullConfig } from './config/env.js';
+import { KillSwitch } from './risk/kill-switch.js';
+import { SystemHealth } from './monitoring/health.js';
+import { MetricsCollector } from './monitoring/metrics.js';
+export declare class FundingArbitrageApp {
+    private config;
+    private db;
+    private binanceClient;
+    private bybitClient;
+    private symbolCache;
+    private scanner;
+    private marketHealth;
+    private opportunityFilter;
+    private riskManager;
+    private circuitBreaker;
+    private killSwitch;
+    private marginMonitor;
+    private sentinel;
+    private historyService;
+    private manualTradeService;
+    private executionEngine;
+    private telegram;
+    private telegramCommander?;
+    private health;
+    private metrics;
+    private tradeRepo;
+    private dailyRepo;
+    private lockFilePath;
+    private isRunning;
+    private isAutoExecutionFrozen;
+    private lastPeriodicReportTime;
+    constructor(config: FullConfig);
+    private acquireLock;
+    private releaseLock;
+    startupReconciliation(): Promise<void>;
+    start(): Promise<void>;
+    stop(): void;
+    freezeAutoExecution(): void;
+    unfreezeAutoExecution(): void;
+    isAutoExecutionFrozenState(): boolean;
+    getHealthMonitor(): SystemHealth;
+    getMetricsCollector(): MetricsCollector;
+    getKillSwitch(): KillSwitch;
+}
+//# sourceMappingURL=app.d.ts.map

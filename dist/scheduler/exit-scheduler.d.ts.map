@@ -1,0 +1,1 @@
+{"version":3,"file":"exit-scheduler.d.ts","sourceRoot":"","sources":["../../src/scheduler/exit-scheduler.ts"],"names":[],"mappings":"AAAA,qBAAa,aAAa;IACxB;;OAEG;IACH,MAAM,CAAC,uBAAuB,CAAC,mBAAmB,EAAE,MAAM,EAAE,sBAAsB,GAAE,MAAW,GAAG,MAAM,CAEvG;IAED;;OAEG;IACH,MAAM,CAAC,SAAS,CAAC,mBAAmB,EAAE,MAAM,EAAE,sBAAsB,GAAE,MAAW,GAAG,OAAO,CAG1F;CACF"}

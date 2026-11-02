@@ -1,0 +1,319 @@
+import { request } from 'undici';
+import { logger } from '../utils/logger.js';
+import { sleep } from '../utils/time.js';
+export class TelegramNotifier {
+    enabled;
+    botToken;
+    chatId;
+    monitoringExpiresAt;
+    recentMessages = new Map();
+    isTestingMode = false;
+    mockSender;
+    constructor(config) {
+        this.enabled = config.enabled && Boolean(config.botToken) && Boolean(config.chatId);
+        this.botToken = config.botToken;
+        this.chatId = config.chatId;
+        const days = config.durationDays ?? 3;
+        this.monitoringExpiresAt = Date.now() + days * 24 * 3600 * 1000;
+        if (this.enabled) {
+            logger.info({
+                chatId: this.chatId,
+                durationDays: days,
+                expiresAt: new Date(this.monitoringExpiresAt).toISOString(),
+            }, 'Telegram monitoring initialized');
+        }
+    }
+    setMockSender(sender) {
+        this.isTestingMode = true;
+        this.mockSender = sender;
+    }
+    getChatId() {
+        return this.chatId;
+    }
+    getBotToken() {
+        return this.botToken;
+    }
+    isEnabled() {
+        return this.enabled;
+    }
+    isMonitoringActive() {
+        return Date.now() < this.monitoringExpiresAt;
+    }
+    getMonitoringExpiry() {
+        return new Date(this.monitoringExpiresAt);
+    }
+    extendMonitoring(additionalDays) {
+        const base = Math.max(Date.now(), this.monitoringExpiresAt);
+        this.monitoringExpiresAt = base + additionalDays * 24 * 3600 * 1000;
+        logger.info({ additionalDays, newExpiresAt: new Date(this.monitoringExpiresAt).toISOString() }, 'Telegram monitoring window extended');
+        return new Date(this.monitoringExpiresAt);
+    }
+    async testConnection() {
+        if (!this.enabled || !this.botToken || !this.chatId) {
+            return { ok: false, message: 'Telegram credentials missing or notifications disabled' };
+        }
+        if (this.isTestingMode) {
+            return { ok: true, message: 'Mock Telegram connection successful' };
+        }
+        try {
+            const url = `https://api.telegram.org/bot${this.botToken}/getMe`;
+            const res = await request(url, { method: 'GET' });
+            const body = await res.body.json();
+            if (body.ok) {
+                return { ok: true, message: `Connected to bot @${body.result.username}` };
+            }
+            return { ok: false, message: body.description || 'Failed to authenticate bot' };
+        }
+        catch (err) {
+            return { ok: false, message: err?.message || 'Network error reaching Telegram API' };
+        }
+    }
+    /**
+     * Registers bot slash commands with Telegram Bot API so they appear in autocomplete & menu button.
+     */
+    async registerBotCommands() {
+        if (!this.enabled || !this.botToken)
+            return false;
+        const commands = [
+            { command: 'dashboard', description: '📊 Top 10 Spreads, 7D Stats & 5x Trade Buttons' },
+            { command: 'top10', description: '📊 Top 10 Funding Spreads & Analytics' },
+            { command: 'trade', description: '⚡ Open 5x Trade (e.g. /trade AKE 10)' },
+            { command: 'history', description: '📈 7-Day Funding Rate Analytics (e.g. /history BTC)' },
+            { command: 'wallet', description: '💼 Binance & Bybit Balances & Margin' },
+            { command: 'next', description: '🎯 Next Planned Trade Forecast & Timing' },
+            { command: 'status', description: '🤖 Bot Health, Execution Mode & Net PnL' },
+            { command: 'freeze', description: '❄️ Freeze Auto-Trade (Manual Only)' },
+            { command: 'unfreeze', description: '🟢 Unfreeze Auto-Trade (Autonomous)' },
+            { command: 'flatten', description: '🚨 Emergency Stop: Flatten All Positions (100% USDT)' },
+            { command: 'help', description: '❓ Complete Command List & Usage Guide' },
+        ];
+        try {
+            const url = `https://api.telegram.org/bot${this.botToken}/setMyCommands`;
+            const res = await request(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ commands }),
+            });
+            logger.info({ statusCode: res.statusCode }, 'Registered bot commands with Telegram API');
+            return res.statusCode === 200;
+        }
+        catch (err) {
+            logger.warn({ err: err?.message }, 'Failed to register bot commands with Telegram');
+            return false;
+        }
+    }
+    /**
+     * Sets the Telegram chat menu button to show the commands list.
+     */
+    async setCommandsMenuButton() {
+        if (!this.enabled || !this.botToken)
+            return false;
+        try {
+            const url = `https://api.telegram.org/bot${this.botToken}/setChatMenuButton`;
+            const res = await request(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ menu_button: { type: 'commands' } }),
+            });
+            return res.statusCode === 200;
+        }
+        catch {
+            return false;
+        }
+    }
+    /**
+     * Returns a persistent Telegram reply keyboard with one-tap action buttons.
+     */
+    getDefaultReplyKeyboard() {
+        return {
+            keyboard: [
+                [
+                    { text: '📊 Dashboard (Top 10)' },
+                    { text: '🎯 Next Planned Trade' },
+                ],
+                [
+                    { text: '💼 Wallet Balances' },
+                    { text: '🤖 Bot Status' },
+                ],
+                [
+                    { text: '❄️ Freeze Auto-Trade' },
+                    { text: '🟢 Unfreeze Auto-Trade' },
+                ],
+                [
+                    { text: '🚨 Emergency Flatten' },
+                    { text: '❓ Help & Commands' },
+                ],
+            ],
+            resize_keyboard: true,
+            is_persistent: true,
+        };
+    }
+    isCriticalEvent(eventType) {
+        const critical = [
+            'ONE_LEG_FAILURE',
+            'HEDGE_RECOVERY_STARTED',
+            'EMERGENCY_FLATTEN',
+            'UNEXPECTED_POSITION',
+            'DAILY_LOSS_LIMIT',
+            'KILL_SWITCH_ACTIVATED',
+            'AUTH_FAILURE',
+        ];
+        return critical.includes(eventType);
+    }
+    async notifyEvent(eventType, title, details, severity = 'INFO') {
+        const isCritical = this.isCriticalEvent(eventType);
+        if (!this.isMonitoringActive() && !isCritical) {
+            logger.debug({ eventType }, 'Monitoring window expired; skipping routine notification');
+            return;
+        }
+        const dedupKey = `${eventType}:${title}:${details}`;
+        const now = Date.now();
+        const lastSent = this.recentMessages.get(dedupKey);
+        if (lastSent && now - lastSent < 60000) {
+            logger.debug({ eventType, title }, 'Suppressing duplicate Telegram notification');
+            return;
+        }
+        this.recentMessages.set(dedupKey, now);
+        if (this.recentMessages.size > 100) {
+            for (const [k, v] of this.recentMessages.entries()) {
+                if (now - v > 120000)
+                    this.recentMessages.delete(k);
+            }
+        }
+        await this.sendAlert(title, details, severity);
+    }
+    async sendDailySummary(summaryData) {
+        const text = `
+*Funding Arbitrage Bot — Daily Summary*
+
+*Date:* \`${summaryData.date}\`
+*Mode:* \`${summaryData.mode.toUpperCase()}\`
+*Binance Status:* ${summaryData.binanceStatus}
+*Bybit Status:* ${summaryData.bybitStatus}
+
+*Coins Scanned:* ${summaryData.coinsScanned}
+*Eligible Opportunities:* ${summaryData.eligibleOpportunities}
+*Trades Attempted:* ${summaryData.tradesAttempted}
+*Trades Completed:* ${summaryData.tradesCompleted}
+*Trades Rejected:* ${summaryData.tradesRejected}
+*Execution Failures:* ${summaryData.executionFailures}
+*Recovery Events:* ${summaryData.recoveryEvents}
+
+*Funding Received:* +$${summaryData.fundingReceivedUsd}
+*Funding Paid:* -$${summaryData.fundingPaidUsd}
+*Trading Fees:* -$${summaryData.tradingFeesUsd}
+*Realized Trading P&L:* $${summaryData.realizedTradingPnlUsd}
+*Net Realized P&L:* *$${summaryData.netRealizedPnlUsd}*
+
+*Open Positions:* ${summaryData.openPositionsText}
+*Unresolved Exposures:* ${summaryData.unresolvedExposuresText}
+*Risk Status:* ${summaryData.riskStatusText}
+`.trim();
+        await this.sendAlert('Daily Operational Summary', text, 'INFO');
+    }
+    async sendMessage(text) {
+        await this.sendMessageWithMarkup(text);
+    }
+    async sendMessageWithMarkup(text, replyMarkup) {
+        if (!this.enabled && !this.isTestingMode) {
+            return { ok: false };
+        }
+        if (this.isTestingMode && this.mockSender) {
+            await this.mockSender('', text);
+            return { ok: true, messageId: 999 };
+        }
+        if (!this.botToken || !this.chatId) {
+            return { ok: false };
+        }
+        // Retry with bounded backoff (max 3 attempts)
+        for (let attempt = 1; attempt <= 3; attempt++) {
+            try {
+                const url = `https://api.telegram.org/bot${this.botToken}/sendMessage`;
+                const payload = {
+                    chat_id: this.chatId,
+                    text,
+                    parse_mode: 'Markdown',
+                };
+                if (replyMarkup) {
+                    payload.reply_markup = replyMarkup;
+                }
+                const res = await request(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+                if (res.statusCode === 200) {
+                    const body = await res.body.json();
+                    return { ok: true, messageId: body?.result?.message_id };
+                }
+                const errText = await res.body.text();
+                logger.warn({ attempt, statusCode: res.statusCode, errText }, 'Telegram API returned non-200');
+                await sleep(500 * Math.pow(2, attempt));
+            }
+            catch (err) {
+                logger.warn({ attempt, err: err?.message }, 'Transient error sending Telegram message');
+                if (attempt < 3) {
+                    await sleep(500 * Math.pow(2, attempt));
+                }
+            }
+        }
+        return { ok: false };
+    }
+    async editMessageText(messageId, text, replyMarkup) {
+        if (!this.enabled || !this.botToken || !this.chatId)
+            return false;
+        try {
+            const url = `https://api.telegram.org/bot${this.botToken}/editMessageText`;
+            const payload = {
+                chat_id: this.chatId,
+                message_id: messageId,
+                text,
+                parse_mode: 'Markdown',
+            };
+            if (replyMarkup) {
+                payload.reply_markup = replyMarkup;
+            }
+            const res = await request(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            return res.statusCode === 200;
+        }
+        catch {
+            return false;
+        }
+    }
+    async answerCallbackQuery(callbackQueryId, text) {
+        if (!this.enabled || !this.botToken)
+            return false;
+        try {
+            const url = `https://api.telegram.org/bot${this.botToken}/answerCallbackQuery`;
+            const payload = { callback_query_id: callbackQueryId };
+            if (text)
+                payload.text = text;
+            const res = await request(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            return res.statusCode === 200;
+        }
+        catch {
+            return false;
+        }
+    }
+    async sendAlert(title, message, severity = 'INFO') {
+        if (!this.enabled && !this.isTestingMode) {
+            return;
+        }
+        if (this.isTestingMode && this.mockSender) {
+            await this.mockSender(title, message);
+            return;
+        }
+        const emoji = severity === 'ERROR' ? '🚨' : severity === 'WARN' ? '⚠️' : 'ℹ️';
+        const text = title ? `${emoji} *${title}*\n\n${message}` : message;
+        await this.sendMessage(text);
+    }
+}
+//# sourceMappingURL=telegram.js.map

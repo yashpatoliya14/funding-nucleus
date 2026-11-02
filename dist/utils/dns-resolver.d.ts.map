@@ -1,0 +1,1 @@
+{"version":3,"file":"dns-resolver.d.ts","sourceRoot":"","sources":["../../src/utils/dns-resolver.ts"],"names":[],"mappings":"AAgBA;;;GAGG;AACH,wBAAgB,eAAe,CAC7B,QAAQ,EAAE,MAAM,EAChB,OAAO,EAAE,GAAG,EACZ,QAAQ,EAAE,CAAC,GAAG,EAAE,MAAM,CAAC,cAAc,GAAG,IAAI,EAAE,OAAO,EAAE,GAAG,EAAE,MAAM,CAAC,EAAE,MAAM,KAAK,IAAI,GACnF,IAAI,CAiCN;AAED;;GAEG;AACH,wBAAgB,aAAa,IAAI,IAAI,CAiBpC"}

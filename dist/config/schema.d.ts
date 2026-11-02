@@ -1,0 +1,65 @@
+import { z } from 'zod';
+export declare const AppConfigSchema: z.ZodObject<{
+    app: z.ZodDefault<z.ZodObject<{
+        mode: z.ZodDefault<z.ZodEnum<{
+            live: "live";
+            paper: "paper";
+        }>>;
+        log_level: z.ZodDefault<z.ZodEnum<{
+            DEBUG: "DEBUG";
+            ERROR: "ERROR";
+            INFO: "INFO";
+            WARN: "WARN";
+            debug: "debug";
+            error: "error";
+            info: "info";
+            warn: "warn";
+        }>>;
+    }, z.core.$strip>>;
+    persistence: z.ZodDefault<z.ZodObject<{
+        driver: z.ZodDefault<z.ZodLiteral<"sqlite">>;
+        path: z.ZodDefault<z.ZodString>;
+    }, z.core.$strip>>;
+    symbols: z.ZodDefault<z.ZodObject<{
+        cache_ttl_hours: z.ZodDefault<z.ZodNumber>;
+        refresh_trading_status_seconds: z.ZodDefault<z.ZodNumber>;
+    }, z.core.$strip>>;
+    strategy: z.ZodDefault<z.ZodObject<{
+        entry_lead_minutes: z.ZodDefault<z.ZodNumber>;
+        target_exit_delay_seconds: z.ZodDefault<z.ZodNumber>;
+        minimum_net_profit_usd: z.ZodDefault<z.ZodNumber>;
+        minimum_funding_edge_pct: z.ZodDefault<z.ZodNumber>;
+        risk_buffer_usd: z.ZodDefault<z.ZodNumber>;
+        require_aligned_funding_events: z.ZodDefault<z.ZodBoolean>;
+        cumulative_carry_enabled: z.ZodDefault<z.ZodBoolean>;
+        carry_min_retention_edge_pct: z.ZodDefault<z.ZodNumber>;
+        margin_rebalance_warning_usd: z.ZodDefault<z.ZodNumber>;
+        auto_execute_trades: z.ZodDefault<z.ZodBoolean>;
+    }, z.core.$strip>>;
+    execution: z.ZodDefault<z.ZodObject<{
+        order_type: z.ZodDefault<z.ZodLiteral<"MARKET">>;
+        parallel_entry: z.ZodDefault<z.ZodBoolean>;
+        maximum_unhedged_seconds: z.ZodDefault<z.ZodNumber>;
+        maximum_recovery_seconds: z.ZodDefault<z.ZodNumber>;
+        maximum_slippage_bps: z.ZodDefault<z.ZodNumber>;
+        maximum_notional_mismatch_pct: z.ZodDefault<z.ZodNumber>;
+        reduce_only_exits: z.ZodDefault<z.ZodBoolean>;
+    }, z.core.$strip>>;
+    risk: z.ZodDefault<z.ZodObject<{
+        default_leverage_cap: z.ZodDefault<z.ZodNumber>;
+        maximum_notional_per_leg_usd: z.ZodDefault<z.ZodNumber>;
+        trade_margin_per_leg_usd: z.ZodOptional<z.ZodNumber>;
+        maximum_concurrent_trades: z.ZodDefault<z.ZodNumber>;
+        maximum_daily_loss_usd: z.ZodDefault<z.ZodNumber>;
+        maximum_aggregate_notional_usd: z.ZodDefault<z.ZodNumber>;
+    }, z.core.$strip>>;
+    monitoring: z.ZodDefault<z.ZodObject<{
+        telegram_enabled: z.ZodDefault<z.ZodBoolean>;
+        monitoring_enabled: z.ZodDefault<z.ZodBoolean>;
+        duration_days: z.ZodDefault<z.ZodNumber>;
+        daily_summary_hour_utc: z.ZodDefault<z.ZodNumber>;
+        daily_summary_minute_utc: z.ZodDefault<z.ZodNumber>;
+    }, z.core.$strip>>;
+}, z.core.$strip>;
+export type AppConfig = z.infer<typeof AppConfigSchema>;
+//# sourceMappingURL=schema.d.ts.map
