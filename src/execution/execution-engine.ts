@@ -36,8 +36,12 @@ export class ExecutionEngine {
     private telegram?: TelegramNotifier
   ) {}
 
-  async executeTrade(candidate: EvaluatedOpportunity, isSimulated: boolean = true): Promise<DbTrade> {
-    if (!candidate.isApproved || candidate.profitability.expectedNetProfitUsd.lessThanOrEqualTo(0)) {
+  async executeTrade(
+    candidate: EvaluatedOpportunity,
+    isSimulated: boolean = true,
+    enforceProfitability: boolean = true
+  ): Promise<DbTrade> {
+    if (!candidate.isApproved || (enforceProfitability && candidate.profitability.expectedNetProfitUsd.lessThanOrEqualTo(0))) {
       throw new Error(
         `Safety Invariant Violation: Trade aborted because expected net profit ($${candidate.profitability?.expectedNetProfitUsd?.toString()}) is negative or zero.`
       );

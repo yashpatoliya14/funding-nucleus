@@ -594,7 +594,7 @@ export class TelegramCommander {
             return;
         }
         try {
-            await this.telegramNotifier.sendMessage(`⏳ *Checking margin & submitting simultaneous 5x orders for ${coin} ($${marginUsd} USDT margin)...*`);
+            await this.telegramNotifier.sendMessage(`⏳ *Checking margin & submitting simultaneous 5x manual orders for ${coin} ($${marginUsd} USDT margin)...*`);
             const isSimulated = false; // Runs live if in live mode
             const result = await this.manualTradeService.executeManualTrade({
                 symbol: coin,

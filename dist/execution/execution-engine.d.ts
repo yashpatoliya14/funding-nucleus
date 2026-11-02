@@ -24,6 +24,6 @@ export declare class ExecutionEngine {
     private marginMonitor?;
     private telegram?;
     constructor(binanceClient: IExchangeClient, bybitClient: IExchangeClient, orderManager: OrderManager, reconciliation: ExecutionReconciliation, hedgeRecovery: HedgeRecovery, stateMachine: TradeStateMachine, tradeRepo: TradeRepository, fundingEventRepo: FundingEventRepository, fundingTxRepo: FundingTransactionRepository, dailyRepo: DailySummaryRepository, config: AppConfig, marginMonitor?: MarginMonitor | undefined, telegram?: TelegramNotifier | undefined);
-    executeTrade(candidate: EvaluatedOpportunity, isSimulated?: boolean): Promise<DbTrade>;
+    executeTrade(candidate: EvaluatedOpportunity, isSimulated?: boolean, enforceProfitability?: boolean): Promise<DbTrade>;
 }
 //# sourceMappingURL=execution-engine.d.ts.map

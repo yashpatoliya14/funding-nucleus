@@ -31,8 +31,8 @@ export class ExecutionEngine {
         this.marginMonitor = marginMonitor;
         this.telegram = telegram;
     }
-    async executeTrade(candidate, isSimulated = true) {
-        if (!candidate.isApproved || candidate.profitability.expectedNetProfitUsd.lessThanOrEqualTo(0)) {
+    async executeTrade(candidate, isSimulated = true, enforceProfitability = true) {
+        if (!candidate.isApproved || (enforceProfitability && candidate.profitability.expectedNetProfitUsd.lessThanOrEqualTo(0))) {
             throw new Error(`Safety Invariant Violation: Trade aborted because expected net profit ($${candidate.profitability?.expectedNetProfitUsd?.toString()}) is negative or zero.`);
         }
         const tradeId = randomUUID();

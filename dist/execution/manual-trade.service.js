@@ -149,7 +149,9 @@ export class ManualTradeService {
         }
         catch { }
         // 8. Wait for the exchange lifecycle so callers receive the actual order result.
-        const executedTrade = await this.executionEngine.executeTrade(evaluated, isSimulated);
+        // Manual commands intentionally bypass the autonomous profitability gate.
+        // Margin, symbol, sizing, exchange, reconciliation, and recovery checks remain active.
+        const executedTrade = await this.executionEngine.executeTrade(evaluated, isSimulated, false);
         if (executedTrade.state === 'FAILED' || executedTrade.state === 'ABORT_AND_FLATTEN') {
             throw new Error(executedTrade.error_message || `Trade execution failed for ${coin}`);
         }
