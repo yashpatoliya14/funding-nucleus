@@ -116,6 +116,26 @@ describe('Integration Tests: Telegram Interactive Dashboard & 5x Trading', () =>
     expect(dispatchedMessages[dispatchedMessages.length - 1]!.text).toContain('FUNDING ARBITRAGE DASHBOARD');
   });
 
+  it('provides buttons for every safe Telegram command', () => {
+    const keyboard = notifier.getDefaultReplyKeyboard();
+    const buttons = keyboard.keyboard.flat().map((button: { text: string }) => button.text);
+
+    expect(buttons).toEqual([
+      '/dashboard',
+      '/top10',
+      '/trade',
+      '/history',
+      '/next',
+      '/wallet',
+      '/status',
+      '/trades',
+      '/freeze',
+      '/unfreeze',
+      '/flatten',
+      '/help',
+    ]);
+  });
+
   it('toggles freeze and unfreeze execution mode via Telegram command', async () => {
     // Unfreeze command
     await (commander as any).handleMessage('unfreeze');
