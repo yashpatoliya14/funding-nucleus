@@ -262,7 +262,7 @@ You can interact directly with the bot in Telegram using both **interactive inli
 | **`7d <pair>`** (e.g. `7d BTC` or `7d AKE`) | 7-Day Funding Rate Analysis | Fetches last 7 days of historical funding rates from Binance & Bybit, displays consistency win rate, cumulative return %, and dominant direction. |
 | **`wallet`** (or `bal`) | Runs wallet & margin query | Shows Binance & Bybit USDT balances, margin availability, and maximum safe position size locked at strictly 5x. |
 | **`next`** (or `plan`) | Next planned trade | 🎯 Full details of upcoming candidate trade: target coin, funding spread, strict 5x leverage, required margins, and entry countdown. |
-| **`top5`** (or `diff`, `rates`) | Scans live market spreads | Returns the Top 5 highest funding rate difference pairs across Binance & Bybit with live rates, spreads, and annualized APR. |
+| **`top10`** (or `top`, `diff`, `rates`) | Scans live market spreads | Returns the Top 10 highest funding rate difference pairs across Binance & Bybit with live rates, spreads, and annualized APR. |
 | **`status`** (or `health`) | Checks system vitals | Displays engine health (`HEALTHY`, `TRIPPED`, `KILL_SWITCH`), Liquidation Sentinel status, active trade count, and today's net PnL. |
 | **`trades`** (or `pos`) | Audits open trades | Details any currently active arbitrage pair, entry state, leg notionals, and expected net profit. |
 | **`flatten`** (or `kill`, or `[🚨 Flatten All]`) | 🚨 Emergency Kill Switch | Immediately cancels all orders, executes market reduce-only liquidations on all open positions across both exchanges (100% USDT), and activates the kill switch. |

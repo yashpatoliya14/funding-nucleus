@@ -672,27 +672,35 @@ export class TelegramCommander {
 
   private async handleHelp(): Promise<void> {
     const msg = [
-      `🤖 *FUNDING ARBITRAGE BOT — COMMAND & DASHBOARD GUIDE* 🤖`,
+      `🤖 *FUNDING ARBITRAGE BOT — ALL COMMANDS GUIDE* 🤖`,
       `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-      `💬 *Interactive Telegram Commands:*\n`,
-      `• *dashboard* — Opens the live Top 10 Arbitrage Dashboard with interactive 5x trade buttons.`,
-      `• *trade <pair> <margin>* — Instantly opens a 5x trade (e.g. \`trade AKE 10\`).`,
-      `• *7d <pair>* — Displays last 7 days funding rate history and performance (e.g. \`7d BTC\`).`,
-      `• *next* — Shows the upcoming candidate pair, margin required, fee deductions, and net profit forecast.`,
-      `• *wallet* — Shows live USDT balances, free margin, and fee tiers on Binance & Bybit.`,
-      `• *top5* — Displays top 5 highest cross-exchange funding spreads right now with APR.`,
-      `• *status* — Bot uptime, risk engine status, circuit breaker health, and today's realized PnL.`,
-      `• *flatten* — 🚨 Instant Emergency Stop: Closes 100% of open positions on Binance & Bybit to USDT.\n`,
+      `📊 *Dashboard & Analytics Commands:*`,
+      `• */dashboard* — Live Top 10 Arbitrage Dashboard with interactive 5x trade buttons ($10, $25, $50, $100).`,
+      `• */top10* — View the top 10 cross-exchange funding rate spreads with APR and countdown.`,
+      `• */history <pair>* (or \`/7d <pair>\`) — View last 7 days funding rate history, consistency score %, win rate %, and dominant direction (e.g. \`/history BTC\`).`,
+      `• */next* — Shows the upcoming candidate pair, margin required, fee deductions, and net profit forecast.`,
+      ``,
+      `⚡ *Execution & Trading Commands:*`,
+      `• */trade <pair> <margin>* — Instantly opens a concurrent 5x trade with specified USDT margin (e.g. \`/trade AKE 10\`).`,
+      `• */wallet* — Live USDT balances, free margin, and fee tiers on Binance & Bybit.`,
+      `• */status* — Bot uptime, risk engine status, circuit breaker health, and today's realized PnL.`,
+      `• */trades* — View currently active positions and PnL across Binance & Bybit.`,
+      ``,
+      `🛡️ *Control & Risk Commands:*`,
+      `• */freeze* — Freeze automated trade execution (Manual Mode: trade via buttons only).`,
+      `• */unfreeze* — Unfreeze automated trade execution (Autonomous Mode).`,
+      `• */flatten* — 🚨 Instant Emergency Stop: Market-closes 100% of open positions on Binance & Bybit to USDT.`,
+      `• */help* — Show this complete command reference guide.`,
       `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-      `🛡️ *Automatic Safety Guarantees:*`,
+      `🛡️ *Safety Guarantees Locked in Code:*`,
       `1️⃣ *Strict 5x Leverage:* All positions, sizing, and orders are locked to 5x leverage.`,
-      `2️⃣ *Liquidation Sentinel:* If one leg liquidates or margin is insufficient, ALL positions are flattened immediately with urgent Telegram alert.`,
-      `3️⃣ *Delta-Neutral Hedge:* Binance and Bybit orders are submitted simultaneously.`,
+      `2️⃣ *Liquidation Sentinel:* Active 3-second watchdog. If one leg liquidates or margin is insufficient, ALL positions are flattened immediately with urgent Telegram alert.`,
+      `3️⃣ *Delta-Neutral Hedge:* Binance and Bybit orders are submitted concurrently.`,
       `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-      `💡 _Send_ \`dashboard\` _to get started!_`
+      `💡 _Tap any button below or send \`/dashboard\` to start!_`
     ].join('\n');
 
-    await this.telegramNotifier.sendMessage(msg);
+    await this.telegramNotifier.sendMessageWithMarkup(msg, this.telegramNotifier.getDefaultReplyKeyboard());
   }
 
   private async handleWallet(): Promise<void> {
@@ -771,7 +779,7 @@ export class TelegramCommander {
     }
   }
 
-  private async handleTop5(): Promise<void> {
+  private async handleTop10(): Promise<void> {
     try {
       if (!this.getOpportunitiesSnapshot) {
         await this.telegramNotifier.sendMessage('⚠️ Scanner is not currently active.');
@@ -784,10 +792,10 @@ export class TelegramCommander {
         return;
       }
 
-      const top5 = opps.slice(0, 5);
+      const top10 = opps.slice(0, 10);
       const now = Date.now();
 
-      const lines = top5.map((opp, idx) => {
+      const lines = top10.map((opp, idx) => {
         const coin = opp.mapping ? opp.mapping.normalized_symbol : opp.symbol || 'UNKNOWN';
         const edge = parseFloat((opp.fundingDiffPct || opp.diffPct || 0).toString()).toFixed(4);
         const bRate = (parseFloat((opp.binanceRate || 0).toString()) * 100).toFixed(4);
@@ -809,13 +817,21 @@ export class TelegramCommander {
         ].join('\n');
       });
 
-      const msg = [`📊 *Top 5 Funding Spreads*`, ``, ...lines].join('\n');
+      const msg = [
+        `📊 *Top 10 Funding Spreads*`,
+        `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+        ...lines,
+        `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+        `💡 _Click below for interactive 7-day stats and 5x trade buttons:_`
+      ].join('\n');
+
       const inline_keyboard = [
-        [{ text: '📊 View Full Top 10 Dashboard', callback_data: 'DASHBOARD' }],
+        [{ text: '📊 Open Interactive Top 10 Dashboard', callback_data: 'DASHBOARD' }],
+        [{ text: '🚨 Emergency Flatten (100% USDT)', callback_data: 'FLATTEN_ALL' }],
       ];
       await this.telegramNotifier.sendMessageWithMarkup(msg, { inline_keyboard });
     } catch (err: any) {
-      await this.telegramNotifier.sendMessage(`⚠️ Failed to retrieve top 5 spreads: ${err?.message || err}`);
+      await this.telegramNotifier.sendMessage(`⚠️ Failed to retrieve top 10 spreads: ${err?.message || err}`);
     }
   }
 
