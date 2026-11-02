@@ -308,8 +308,12 @@ export class TelegramCommander {
       // 1. Dashboard & Top 10
       if (
         lower.includes('dashboard') ||
+        lower.includes('dadhboard') ||
+        lower.includes('dashbord') ||
+        lower.includes('dashbaord') ||
         lower.includes('top 10') ||
         firstWord === 'dashboard' ||
+        firstWord === 'dadhboard' ||
         firstWord === 'dash' ||
         firstWord === 'top10' ||
         firstWord === 'start' ||
