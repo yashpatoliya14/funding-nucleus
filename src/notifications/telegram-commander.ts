@@ -305,19 +305,19 @@ export class TelegramCommander {
         return;
       }
 
-      // 1. Dashboard & Top 10
+      // 1. Dashboard & Top 10 (with fuzzy tolerance for dashboatd, dashaboard, dadhboard, dash, etc.)
+      const cleanFirst = firstWord.replace(/^\//, '');
       if (
         lower.includes('dashboard') ||
-        lower.includes('dadhboard') ||
-        lower.includes('dashbord') ||
-        lower.includes('dashbaord') ||
+        lower.includes('dash') ||
+        lower.includes('board') ||
+        cleanFirst.startsWith('dash') ||
+        cleanFirst.startsWith('dadh') ||
         lower.includes('top 10') ||
-        firstWord === 'dashboard' ||
-        firstWord === 'dadhboard' ||
-        firstWord === 'dash' ||
-        firstWord === 'top10' ||
-        firstWord === 'start' ||
-        firstWord === 'menu'
+        cleanFirst === 'top10' ||
+        cleanFirst === 'top' ||
+        cleanFirst === 'start' ||
+        cleanFirst === 'menu'
       ) {
         await this.handleDashboard();
         return;
