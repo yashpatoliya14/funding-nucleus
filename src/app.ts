@@ -402,7 +402,7 @@ export class FundingArbitrageApp {
             if (this.isAutoExecutionFrozen) {
               logger.info(
                 { coin, edgePct: `${edgePct}%` },
-                '❄️ [MANUAL MODE] Opportunity approved in entry window, but automated trade execution is FROZEN. Standing by for manual trigger via Telegram.'
+                '❄️ [MANUAL MODE] Opportunity approved in entry window, but automated trade execution is FROZEN.'
               );
               await sleep(15000);
               continue;
