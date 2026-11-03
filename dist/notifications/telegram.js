@@ -75,8 +75,9 @@ export class TelegramNotifier {
         if (!this.enabled || !this.botToken)
             return false;
         const commands = [
-            { command: 'flatten', description: '🚨 Emergency Stop: Flatten All Positions (100% USDT)' },
-            { command: 'current', description: '📊 Current Active Trade Details & Positions' },
+            { command: 'flatten', description: '🚨 Flatten for Emergency (100% USDT)' },
+            { command: 'current', description: '📊 Current Trade Details & Positions' },
+            { command: 'next', description: '🎯 Next Trade Plan & Sizing Forecast' },
             { command: 'top10', description: '📈 Top 10 Cross-Exchange Funding Spreads' },
             { command: 'wallet', description: '💼 Binance & Bybit Balances & Margin' },
             { command: 'netpnl', description: '💰 Today Realized Net PnL & Performance' },
@@ -127,10 +128,13 @@ export class TelegramNotifier {
                 ],
                 [
                     { text: '📊 Current Trade Details' },
-                    { text: '📈 Top 10' },
+                    { text: '🎯 Next Trade Plan' },
                 ],
                 [
+                    { text: '📈 Top 10' },
                     { text: '💼 Wallet' },
+                ],
+                [
                     { text: '💰 Net PnL' },
                 ],
             ],

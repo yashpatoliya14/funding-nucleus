@@ -176,6 +176,9 @@ export class TelegramCommander {
         else if (data === 'CURRENT' || data === 'TRADES') {
             await this.handleTrades();
         }
+        else if (data === 'NEXT' || data === 'NEXT_PLAN') {
+            await this.handleNextPlannedTrade();
+        }
         else if (data === 'TOP10') {
             await this.handleTop10();
         }
@@ -215,6 +218,12 @@ export class TelegramCommander {
             'flatten': '/flatten',
             'emergency': '/flatten',
             '📊 current trade details': '/current',
+            '🎯 next trade plan': '/next',
+            'next trade plan details': '/next',
+            'next trade plan': '/next',
+            'next trade': '/next',
+            'next plan': '/next',
+            'next': '/next',
             '📋 current trade details': '/current',
             'current trade details': '/current',
             'current trade': '/current',
@@ -256,6 +265,7 @@ export class TelegramCommander {
         const rawTrimmed = commandAliases[buttonText] ||
             (buttonText.includes('flatten') ? '/flatten' : undefined) ||
             (buttonText.includes('current trade') || buttonText.includes('trade details') ? '/current' : undefined) ||
+            (buttonText.includes('next') || buttonText.includes('plan') ? '/next' : undefined) ||
             (buttonText.includes('dashboard') || buttonText.startsWith('dash') ? '/dashboard' : undefined) ||
             (buttonText.includes('top10') || buttonText.includes('top 10') || buttonText.includes('spreads') ? '/top10' : undefined) ||
             (buttonText.includes('wallet') || buttonText.includes('balance') ? '/wallet' : undefined) ||
@@ -289,6 +299,16 @@ export class TelegramCommander {
                 firstWord === 'pos' ||
                 lower.includes('current trade')) {
                 await this.handleTrades();
+                return;
+            }
+            // 2b. Next Planned Trade
+            if (firstWord === 'next' ||
+                firstWord === 'plan' ||
+                firstWord === 'planned' ||
+                firstWord === 'target' ||
+                lower.includes('next trade') ||
+                lower.includes('trade plan')) {
+                await this.handleNextPlannedTrade();
                 return;
             }
             // 3. Top 10 Spreads / Dashboard
@@ -368,9 +388,10 @@ export class TelegramCommander {
                 '🤖 *Available Options:*',
                 '1️⃣ /flatten — 🚨 Flatten for Emergency (100% USDT)',
                 '2️⃣ /current — 📋 Current Trade Details & Positions',
-                '3️⃣ /top10 — 📈 Top 10 Cross-Exchange Funding Spreads',
-                '4️⃣ /wallet — 💼 Binance & Bybit Balances & Margin',
-                '5️⃣ /netpnl — 💰 Today Realized Net PnL & Status',
+                '3️⃣ /next — 🎯 Next Trade Plan & Sizing Forecast',
+                '4️⃣ /top10 — 📈 Top 10 Cross-Exchange Funding Spreads',
+                '5️⃣ /wallet — 💼 Binance & Bybit Balances & Margin',
+                '6️⃣ /netpnl — 💰 Today Realized Net PnL & Status',
                 'ℹ️ /help — Commands & Strategy Reference Guide',
             ].join('\n');
             await this.telegramNotifier.sendMessageWithMarkup(fallbackMsg, this.telegramNotifier.getDefaultReplyKeyboard());
@@ -905,7 +926,15 @@ export class TelegramCommander {
             ].filter(Boolean).join('\n');
             const inline_keyboard = [
                 [
-                    { text: '📊 Top 10 Dashboard', callback_data: 'TOP10' },
+                    { text: '📋 Current Trade', callback_data: 'CURRENT' },
+                    { text: '📈 Top 10 Spreads', callback_data: 'TOP10' },
+                ],
+                [
+                    { text: '💼 Wallet', callback_data: 'WALLET' },
+                    { text: '💰 Net PnL', callback_data: 'NETPNL' },
+                ],
+                [
+                    { text: '🚨 Flatten for Emergency', callback_data: 'FLATTEN_ALL' },
                 ],
             ];
             await this.telegramNotifier.sendMessageWithMarkup(msg, { inline_keyboard });

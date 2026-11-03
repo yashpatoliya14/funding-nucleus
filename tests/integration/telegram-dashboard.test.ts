@@ -123,6 +123,7 @@ describe('Integration Tests: Telegram Interactive Dashboard & Monitoring', () =>
     expect(buttons).toEqual([
       '🚨 Flatten for Emergency',
       '📊 Current Trade Details',
+      '🎯 Next Trade Plan',
       '📈 Top 10',
       '💼 Wallet',
       '💰 Net PnL',

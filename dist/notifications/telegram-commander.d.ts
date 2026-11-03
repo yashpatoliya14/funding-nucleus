@@ -71,7 +71,7 @@ export declare class TelegramCommander {
     handleTop10(): Promise<void>;
     handleNetPnl(): Promise<void>;
     handleStatus(): Promise<void>;
-    private handleNextPlannedTrade;
+    handleNextPlannedTrade(): Promise<void>;
     private handleTrades;
     handleEmergencyFlatten(): Promise<void>;
     private handleDualTestOrder;
