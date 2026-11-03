@@ -46,11 +46,11 @@ export class MarginMonitor {
       if (binanceBalances.status === 'fulfilled') {
         const usdt = binanceBalances.value.find((b) => b.asset === 'USDT');
         biAvail = usdt ? parseFloat(usdt.availableBalance.toString()) : 0;
-        if (usdt && usdt.unrealizedPnl) {
-          biUnPnl += parseFloat(usdt.unrealizedPnl.toString());
+        if (usdt && usdt.unrealizedPnl && !usdt.unrealizedPnl.isZero()) {
+          biUnPnl = parseFloat(usdt.unrealizedPnl.toString());
         }
       }
-      if (binancePositions.status === 'fulfilled') {
+      if (biUnPnl === 0 && binancePositions.status === 'fulfilled') {
         for (const p of binancePositions.value) {
           if (p.side !== 'FLAT') {
             biUnPnl += parseFloat(p.unrealizedPnl.toString());
@@ -63,11 +63,11 @@ export class MarginMonitor {
       if (bybitBalances.status === 'fulfilled') {
         const usdt = bybitBalances.value.find((b) => b.asset === 'USDT');
         byAvail = usdt ? parseFloat(usdt.availableBalance.toString()) : 0;
-        if (usdt && usdt.unrealizedPnl) {
-          byUnPnl += parseFloat(usdt.unrealizedPnl.toString());
+        if (usdt && usdt.unrealizedPnl && !usdt.unrealizedPnl.isZero()) {
+          byUnPnl = parseFloat(usdt.unrealizedPnl.toString());
         }
       }
-      if (bybitPositions.status === 'fulfilled') {
+      if (byUnPnl === 0 && bybitPositions.status === 'fulfilled') {
         for (const p of bybitPositions.value) {
           if (p.side !== 'FLAT') {
             byUnPnl += parseFloat(p.unrealizedPnl.toString());

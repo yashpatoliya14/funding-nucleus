@@ -199,6 +199,7 @@ export class FundingArbitrageApp {
       telegram: this.telegram,
       checkIntervalMs: 3000,
       minEmergencyMarginUsd: 2.0,
+      tradeRepo: this.tradeRepo,
     });
     if (config.appConfig.monitoring.telegram_enabled && config.env.TELEGRAM_BOT_TOKEN && config.env.TELEGRAM_CHAT_ID) {
       this.telegramCommander = new TelegramCommander({

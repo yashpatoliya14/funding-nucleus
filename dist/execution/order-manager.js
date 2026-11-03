@@ -7,7 +7,8 @@ export class OrderManager {
     generateClientOrderId(exchange, tradeId, side, purpose) {
         const shortTradeId = tradeId.replace(/-/g, '').slice(0, 8);
         const ts = Date.now().toString().slice(-6);
-        return `arb_${exchange.slice(0, 2)}_${shortTradeId}_${purpose.slice(0, 3)}_${ts}`;
+        const rand = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+        return `arb_${exchange.slice(0, 2)}_${shortTradeId}_${purpose.slice(0, 3)}_${ts}_${rand}`;
     }
     async executeMakerOrder(client, tradeId, symbol, side, quantity, price, purpose = 'ENTRY') {
         const exchange = client.exchangeName;

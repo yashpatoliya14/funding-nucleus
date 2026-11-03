@@ -50,7 +50,7 @@ export class KillSwitch {
                         side: closeSide,
                         orderType: 'MARKET',
                         quantity: p.quantity,
-                        clientOrderId: `emg-b-${Date.now()}`,
+                        clientOrderId: `emg-b-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
                         reduceOnly: true,
                     });
                     flattenedCount++;
@@ -77,7 +77,7 @@ export class KillSwitch {
                         side: closeSide,
                         orderType: 'MARKET',
                         quantity: p.quantity,
-                        clientOrderId: `emg-by-${Date.now()}`,
+                        clientOrderId: `emg-by-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
                         reduceOnly: true,
                     });
                     flattenedCount++;

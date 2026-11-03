@@ -152,16 +152,20 @@ export class ExecutionEngine {
 
             if (makerResult.status === 'FILLED' || !makerResult.executedQuantity.isZero()) {
               byOrder = makerResult;
-              bOrder = await this.orderManager.executeMarketOrder(
-                this.binanceClient,
-                tradeId,
-                bSymbol,
-                bSide,
-                candidate.sizing.binanceQuantity,
-                'ENTRY',
-                false
-              );
-              logger.info({ coin, makerExchange: 'bybit' }, '🎉 Maker-Taker hybrid fill successful! Captured maker fee rebate.');
+              try {
+                bOrder = await this.orderManager.executeMarketOrder(
+                  this.binanceClient,
+                  tradeId,
+                  bSymbol,
+                  bSide,
+                  candidate.sizing.binanceQuantity,
+                  'ENTRY',
+                  false
+                );
+                logger.info({ coin, makerExchange: 'bybit' }, '🎉 Maker-Taker hybrid fill successful! Captured maker fee rebate.');
+              } catch (bErr: any) {
+                logger.error({ err: bErr?.message, coin }, 'CRITICAL: Bybit maker filled but Binance market entry threw error! Proceeding to reconciliation/recovery');
+              }
             } else {
               if (this.bybitClient.cancelOrder) {
                 await this.bybitClient.cancelOrder(bySymbol, makerResult.clientOrderId, makerResult.exchangeOrderId || undefined).catch(() => {});
@@ -173,8 +177,8 @@ export class ExecutionEngine {
         }
       }
 
-      // If hybrid was disabled or did not fill, execute guaranteed parallel market orders
-      if (!bOrder || !byOrder) {
+      // Only execute parallel market orders if NEITHER leg was executed (clean fallback)
+      if (!bOrder && !byOrder) {
         const [bOrderResult, byOrderResult] = await Promise.allSettled([
           this.orderManager.executeMarketOrder(
             this.binanceClient,
@@ -316,12 +320,12 @@ export class ExecutionEngine {
 
         if (waitTimeMs > 0) {
           if (!isSimulated) {
-            // In live mode: wait in 5-second periodic chunks while actively monitoring for liquidation & margin drift
-            let remainingMs = waitTimeMs;
-            while (remainingMs > 0) {
-              const sleepChunk = Math.min(remainingMs, 5000);
+            // In live mode: wait in 5-second periodic chunks anchored to wall-clock exitTimeMs (zero clock drift)
+            while (Date.now() < exitTimeMs) {
+              const remaining = exitTimeMs - Date.now();
+              const sleepChunk = Math.min(remaining, 5000);
+              if (sleepChunk <= 0) break;
               await sleep(sleepChunk);
-              remainingMs -= sleepChunk;
 
               // 1. LIQUIDATION & ONE-LEG FAILURE GUARD
               // If user missed the margin rebalance alert and one leg gets liquidated or closed by exchange,

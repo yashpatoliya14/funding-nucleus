@@ -1,6 +1,7 @@
 import { IExchangeClient } from '../exchanges/exchange.interface.js';
 import { KillSwitch } from './kill-switch.js';
 import { TelegramNotifier } from '../notifications/telegram.js';
+import { TradeRepository } from '../persistence/repositories.js';
 export interface SentinelOptions {
     binanceClient: IExchangeClient;
     bybitClient: IExchangeClient;
@@ -8,6 +9,7 @@ export interface SentinelOptions {
     telegram: TelegramNotifier;
     checkIntervalMs?: number;
     minEmergencyMarginUsd?: number;
+    tradeRepo?: TradeRepository;
 }
 export declare class LiquidationSentinel {
     private binanceClient;
@@ -16,6 +18,7 @@ export declare class LiquidationSentinel {
     private telegram;
     private checkIntervalMs;
     private minEmergencyMarginUsd;
+    private tradeRepo?;
     private isRunning;
     private lastAlertTime;
     constructor(options: SentinelOptions);

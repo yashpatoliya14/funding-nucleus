@@ -10,6 +10,7 @@ export class LiquidationSentinel {
     telegram;
     checkIntervalMs;
     minEmergencyMarginUsd;
+    tradeRepo;
     isRunning = false;
     lastAlertTime = 0;
     constructor(options) {
@@ -19,6 +20,7 @@ export class LiquidationSentinel {
         this.telegram = options.telegram;
         this.checkIntervalMs = options.checkIntervalMs ?? 3000;
         this.minEmergencyMarginUsd = options.minEmergencyMarginUsd ?? 2.0;
+        this.tradeRepo = options.tradeRepo;
     }
     start() {
         if (this.isRunning)
@@ -63,6 +65,15 @@ export class LiquidationSentinel {
         // If no positions open, nothing to liquidate
         if (bPositions.length === 0 && byPositions.length === 0) {
             return false;
+        }
+        // If an entry order is currently in-flight, skip orphan check to avoid race conditions
+        if (this.tradeRepo) {
+            const activeTrades = this.tradeRepo.getActiveTrades();
+            const inFlight = activeTrades.some((t) => t.state === 'ENTRY_SUBMITTED' || t.state === 'ENTRY_RECONCILIATION');
+            if (inFlight) {
+                logger.debug('Skipping Sentinel orphan check: Entry execution is in-flight');
+                return false;
+            }
         }
         // 1. CHECK FOR ONE-LEG LIQUIDATION (Orphan Leg)
         let orphanDetected = false;
@@ -117,13 +128,14 @@ export class LiquidationSentinel {
      * immediately searches for and enters a new arbitrage opportunity.
      */
     async recoverOrphanLegAndResume(reasonText) {
+        logger.warn({ reasonText }, 'Orphan leg liquidation detected. Immediately market-closing surviving leg and finding new opportunity.');
+        // 1. ALWAYS perform emergency market close on surviving positions immediately!
+        const flattenResult = await this.killSwitch.emergencyFlatten();
+        // 2. Throttle only duplicate Telegram alerts
         const now = Date.now();
         if (now - this.lastAlertTime < 5000)
             return;
         this.lastAlertTime = now;
-        logger.warn({ reasonText }, 'Orphan leg liquidation detected. Immediately market-closing surviving leg and finding new opportunity.');
-        // 1. Perform emergency market close on surviving positions without engaging permanent kill switch
-        const flattenResult = await this.killSwitch.emergencyFlatten();
         // 2. Query remaining balances
         let biBalStr = 'N/A';
         let byBalStr = 'N/A';
@@ -174,14 +186,14 @@ export class LiquidationSentinel {
      * engages the kill switch, and sends a critical Telegram alert.
      */
     async triggerEmergencyFlatten(triggerType, reasonText) {
+        // 1. ALWAYS engage kill switch and flatten positions immediately!
+        this.killSwitch.activate(`[${triggerType}] ${reasonText}`);
+        const flattenResult = await this.killSwitch.emergencyFlatten();
+        // 2. Throttle only duplicate Telegram alerts
         const now = Date.now();
         if (now - this.lastAlertTime < 10000)
             return;
         this.lastAlertTime = now;
-        // 1. Engage kill switch
-        this.killSwitch.activate(`[${triggerType}] ${reasonText}`);
-        // 2. Perform emergency reduce-only market flatten across Binance & Bybit
-        const flattenResult = await this.killSwitch.emergencyFlatten();
         // 3. Query final remaining balances
         let biBalStr = 'N/A';
         let byBalStr = 'N/A';

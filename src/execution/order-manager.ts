@@ -11,7 +11,8 @@ export class OrderManager {
   generateClientOrderId(exchange: ExchangeName, tradeId: string, side: OrderSide, purpose: string): string {
     const shortTradeId = tradeId.replace(/-/g, '').slice(0, 8);
     const ts = Date.now().toString().slice(-6);
-    return `arb_${exchange.slice(0, 2)}_${shortTradeId}_${purpose.slice(0, 3)}_${ts}`;
+    const rand = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+    return `arb_${exchange.slice(0, 2)}_${shortTradeId}_${purpose.slice(0, 3)}_${ts}_${rand}`;
   }
 
 
