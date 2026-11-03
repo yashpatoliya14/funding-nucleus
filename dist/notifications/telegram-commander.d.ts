@@ -63,7 +63,9 @@ export declare class TelegramCommander {
     private initializeOffset;
     private pollLoop;
     private handleCallbackQuery;
+    private normalizeCommand;
     private handleMessage;
+    private parseOpportunity;
     handleDashboard(messageId?: number): Promise<void>;
     handlePairSelected(coin: string, messageId?: number): Promise<void>;
     private handleHelp;
@@ -72,8 +74,7 @@ export declare class TelegramCommander {
     handleNetPnl(): Promise<void>;
     handleStatus(): Promise<void>;
     handleNextPlannedTrade(): Promise<void>;
-    private handleTrades;
+    handleTrades(): Promise<void>;
     handleEmergencyFlatten(): Promise<void>;
-    private handleDualTestOrder;
 }
 //# sourceMappingURL=telegram-commander.d.ts.map

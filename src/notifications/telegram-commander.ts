@@ -6,7 +6,6 @@ import { logger } from '../utils/logger.js';
 import { sleep } from '../utils/time.js';
 import { CircuitBreaker } from '../risk/circuit-breaker.js';
 import { KillSwitch } from '../risk/kill-switch.js';
-import { executeTestOrder } from '../execution/test-order-executor.js';
 import { FundingHistoryService, SevenDayFundingStats } from '../analytics/funding-history.service.js';
 import { LiquidationSentinel } from '../risk/liquidation-sentinel.js';
 import { SymbolCache } from '../market-data/symbol-cache.js';
@@ -33,6 +32,19 @@ export interface TelegramCommanderOptions {
   isAutoExecutionFrozen?: () => boolean;
   freezeAutoExecution?: () => void;
   unfreezeAutoExecution?: () => void;
+}
+
+interface ParsedOpportunity {
+  coin: string;
+  bSymbol: string;
+  bySymbol: string;
+  bRatePct: number;
+  byRatePct: number;
+  spreadPct: number;
+  aprPct: number;
+  targetTime: number;
+  timeStr: string;
+  direction: string;
 }
 
 export class TelegramCommander {
@@ -114,7 +126,6 @@ export class TelegramCommander {
   private async initializeOffset(): Promise<void> {
     this.startedAtSec = Math.floor(Date.now() / 1000);
     try {
-      // 1. Drop all pending backlog updates on Telegram servers accumulated while offline
       const flushUrl = `https://api.telegram.org/bot${this.botToken}/deleteWebhook?drop_pending_updates=true`;
       await request(flushUrl, { method: 'POST' });
       logger.info('Purged stale Telegram update backlog on startup via deleteWebhook');
@@ -123,7 +134,6 @@ export class TelegramCommander {
     }
 
     try {
-      // 2. Fetch latest update id to advance offset past any lingering messages
       const url = `https://api.telegram.org/bot${this.botToken}/getUpdates?offset=-1&limit=1`;
       const res = await request(url, { method: 'GET' });
       if (res.statusCode === 200) {
@@ -132,7 +142,6 @@ export class TelegramCommander {
           const latest = body.result[body.result.length - 1];
           this.lastUpdateId = latest.update_id;
           this.processedUpdateIds.add(latest.update_id);
-          // Acknowledge this update immediately so Telegram marks it resolved
           await request(`https://api.telegram.org/bot${this.botToken}/getUpdates?offset=${this.lastUpdateId + 1}&limit=1`, { method: 'GET' });
           logger.info({ lastUpdateId: this.lastUpdateId }, 'Flushed previous Telegram updates on startup');
         }
@@ -163,15 +172,10 @@ export class TelegramCommander {
                 this.processedUpdateIds = new Set(arr.slice(arr.length - 1000));
               }
 
-              // Handle callback queries (button clicks)
               if (update.callback_query) {
                 const cb = update.callback_query;
                 const cbDate = cb.message?.date;
-                // Discard stale callback clicks sent before the bot started (older than 30s before start)
-                if (cbDate && cbDate < this.startedAtSec - 30) {
-                  logger.debug({ cbDate, startedAt: this.startedAtSec }, 'Discarding stale callback query');
-                  continue;
-                }
+                if (cbDate && cbDate < this.startedAtSec - 30) continue;
                 const senderChatId = String(cb.message?.chat?.id || cb.from?.id || '');
                 if (senderChatId === this.chatId) {
                   await this.handleCallbackQuery(cb);
@@ -179,14 +183,9 @@ export class TelegramCommander {
                 continue;
               }
 
-              // Handle text messages
               if (update.message && update.message.text) {
                 const msgDate = update.message.date;
-                // Discard stale messages sent before the bot started (older than 30s before start)
-                if (msgDate && msgDate < this.startedAtSec - 30) {
-                  logger.debug({ msgDate, startedAt: this.startedAtSec }, 'Discarding stale message sent while bot was offline');
-                  continue;
-                }
+                if (msgDate && msgDate < this.startedAtSec - 30) continue;
                 const senderChatId = String(update.message.chat?.id || '');
                 if (senderChatId === this.chatId) {
                   await this.handleMessage(update.message.text.trim());
@@ -197,13 +196,13 @@ export class TelegramCommander {
         } else {
           await sleep(3000);
         }
-      } catch (err: any) {
+      } catch {
         await sleep(3000);
       }
     }
   }
 
-    private async handleCallbackQuery(cb: any): Promise<void> {
+  private async handleCallbackQuery(cb: any): Promise<void> {
     const data: string = cb.data || '';
     const messageId: number = cb.message?.message_id;
     await this.telegramNotifier.answerCallbackQuery(cb.id);
@@ -238,210 +237,93 @@ export class TelegramCommander {
     }
   }
 
+  private normalizeCommand(rawText: string): string {
+    const trimmed = rawText.trim();
+    const lower = trimmed.toLowerCase();
+
+    if (lower.includes('flatten') || lower.includes('emergency') || lower === 'kill') return 'flatten';
+    if (lower.includes('current trade') || lower.includes('trade details') || lower === 'current' || lower === 'trades' || lower === 'positions' || lower === 'pos') return 'current';
+    if (lower.includes('next') || lower.includes('plan') || lower === 'target') return 'next';
+    if (lower.includes('dashboard') || lower.startsWith('dash')) return 'dashboard';
+    if (lower.includes('top10') || lower.includes('top 10') || lower.includes('spreads') || lower === 'top' || lower === 'rates' || lower === 'diff' || lower === 'funding') return 'top10';
+    if (lower.includes('wallet') || lower.includes('balance')) return 'wallet';
+    if (lower.includes('netpnl') || lower.includes('net pnl') || (lower.includes('status') && !lower.includes('freeze')) || lower === 'pnl' || lower === 'info' || lower === 'health') return 'netpnl';
+    if (lower.includes('unfreeze') || lower.includes('resume')) return 'unfreeze';
+    if (lower.includes('freeze') || lower.includes('pause')) return 'freeze';
+    if (lower.includes('help') || lower.includes('command') || lower === 'start' || lower === 'menu' || lower === '?') return 'help';
+    if (lower.startsWith('trade') || lower.startsWith('/trade')) return 'trade';
+
+    const firstWord = trimmed.split(/\s+/)[0]?.replace(/^\//, '').split('@')[0]?.toLowerCase() || '';
+    return firstWord;
+  }
+
   private async handleMessage(text: string): Promise<void> {
-    const commandAliases: Record<string, string> = {
-      '🚨 flatten for emergency': '/flatten',
-      '🚨 emergency flatten': '/flatten',
-      'flatten for emergency': '/flatten',
-      'flatten for emmergency': '/flatten',
-      'flatten': '/flatten',
-      'emergency': '/flatten',
-      '📊 current trade details': '/current',
-      '🎯 next trade plan': '/next',
-      'next trade plan details': '/next',
-      'next trade plan': '/next',
-      'next trade': '/next',
-      'next plan': '/next',
-      'next': '/next',
-      '📋 current trade details': '/current',
-      'current trade details': '/current',
-      'current trade': '/current',
-      'trade details': '/current',
-      'current': '/current',
-      'trades': '/current',
-      'positions': '/current',
-      '📈 top 10 spreads': '/top10',
-      '📈 top 10': '/top10',
-      'top10': '/top10',
-      'top 10': '/top10',
-      'dashboard': '/dashboard',
-      '📊 top 10 dashboard': '/dashboard',
-      '📈 funding spreads': '/top10',
-      'top': '/top10',
-      '💼 wallet balances': '/wallet',
-      '💼 wallet': '/wallet',
-      'wallet & margin': '/wallet',
-      'wallet': '/wallet',
-      'wallets': '/wallet',
-      'balance': '/wallet',
-      'balances': '/wallet',
-      '💰 net pnl & status': '/netpnl',
-      '💰 net pnl': '/netpnl',
-      'netpnl': '/netpnl',
-      'net pnl': '/netpnl',
-      'pnl': '/netpnl',
-      'status': '/netpnl',
-      'bot status': '/netpnl',
-      'freeze': '/freeze',
-      'unfreeze': '/unfreeze',
-      '❄️ freeze auto-trade': '/freeze',
-      '🟢 unfreeze auto-trade': '/unfreeze',
-      'help': '/help',
-      'commands': '/help',
-      '❓ help & commands': '/help',
-    };
-
-    const buttonText = text.trim().toLowerCase();
-    const rawTrimmed =
-      commandAliases[buttonText] ||
-      (buttonText.includes('flatten') ? '/flatten' : undefined) ||
-      (buttonText.includes('current trade') || buttonText.includes('trade details') ? '/current' : undefined) ||
-      (buttonText.includes('next') || buttonText.includes('plan') ? '/next' : undefined) ||
-      (buttonText.includes('dashboard') || buttonText.startsWith('dash') ? '/dashboard' : undefined) ||
-      (buttonText.includes('top10') || buttonText.includes('top 10') || buttonText.includes('spreads') ? '/top10' : undefined) ||
-      (buttonText.includes('wallet') || buttonText.includes('balance') ? '/wallet' : undefined) ||
-      (buttonText.includes('netpnl') || buttonText.includes('net pnl') || (buttonText.includes('status') && !buttonText.includes('freeze')) ? '/netpnl' : undefined) ||
-      (buttonText.includes('freeze') && !buttonText.includes('unfreeze') ? '/freeze' : undefined) ||
-      (buttonText.includes('unfreeze') ? '/unfreeze' : undefined) ||
-      (buttonText.includes('help') ? '/help' : undefined) ||
-      text.trim();
-
-    const lower = rawTrimmed.toLowerCase();
-    const parts = rawTrimmed.split(/\s+/);
-    const firstWord = (parts[0] || '').toLowerCase().replace(/^\//, '').split('@')[0] || '';
-    logger.info({ rawCmd: firstWord, fullText: rawTrimmed }, 'Received Telegram command from authorized user');
+    const rawTrimmed = text.trim();
+    const cmd = this.normalizeCommand(rawTrimmed);
+    logger.info({ rawCmd: cmd, fullText: rawTrimmed }, 'Received Telegram command from authorized user');
 
     this.isProcessingCommand = true;
     try {
-      if (firstWord === 'trade') {
-        await this.telegramNotifier.sendMessage('⚠️ Manual trade execution from Telegram is disabled.');
-        return;
-      }
-
-      // 1. Flatten for Emergency
-      if (
-        firstWord === 'flatten' ||
-        firstWord === 'emergency' ||
-        firstWord === 'kill' ||
-        lower.includes('flatten')
-      ) {
-        await this.handleEmergencyFlatten();
-        return;
-      }
-
-      // 2. Current Trade Details
-      if (
-        firstWord === 'current' ||
-        firstWord === 'trades' ||
-        firstWord === 'positions' ||
-        firstWord === 'pos' ||
-        lower.includes('current trade')
-      ) {
-        await this.handleTrades();
-        return;
-      }
-
-      // 2b. Next Planned Trade
-      if (
-        firstWord === 'next' ||
-        firstWord === 'plan' ||
-        firstWord === 'planned' ||
-        firstWord === 'target' ||
-        lower.includes('next trade') ||
-        lower.includes('trade plan')
-      ) {
-        await this.handleNextPlannedTrade();
-        return;
-      }
-
-      // 3. Top 10 Spreads / Dashboard
-      if (
-        firstWord === 'top10' ||
-        firstWord === 'top' ||
-        firstWord === 'top5' ||
-        firstWord === 'dashboard' ||
-        firstWord === 'dash' ||
-        firstWord === 'spreads' ||
-        firstWord === 'rates' ||
-        firstWord === 'diff' ||
-        firstWord === 'funding' ||
-        lower.includes('top 10') ||
-        lower.includes('dashboard')
-      ) {
-        if (firstWord === 'dashboard' || lower.includes('dashboard')) {
-          await this.handleDashboard();
-        } else {
+      switch (cmd) {
+        case 'flatten':
+          await this.handleEmergencyFlatten();
+          return;
+        case 'current':
+          await this.handleTrades();
+          return;
+        case 'next':
+          await this.handleNextPlannedTrade();
+          return;
+        case 'top10':
           await this.handleTop10();
-        }
-        return;
+          return;
+        case 'dashboard':
+          await this.handleDashboard();
+          return;
+        case 'wallet':
+          await this.handleWallet();
+          return;
+        case 'netpnl':
+          await this.handleNetPnl();
+          return;
+        case 'trade':
+          await this.telegramNotifier.sendMessage('⚠️ Manual trade execution from Telegram is disabled.');
+          return;
+        case 'unfreeze':
+          if (this.unfreezeAutoExecution) this.unfreezeAutoExecution();
+          await this.telegramNotifier.sendMessage('🟢 *Automated trade execution is now UNFROZEN.*');
+          return;
+        case 'freeze':
+          if (this.freezeAutoExecution) this.freezeAutoExecution();
+          await this.telegramNotifier.sendMessage('❄️ *Automated trade execution is now FROZEN.*');
+          return;
+        case 'help':
+          await this.handleHelp();
+          return;
       }
 
-      // 4. Wallet Balances & Margin
-      if (
-        firstWord === 'wallet' ||
-        firstWord === 'wallets' ||
-        firstWord === 'balance' ||
-        firstWord === 'balances' ||
-        lower.includes('wallet')
-      ) {
-        await this.handleWallet();
+      // Check 7d history or single pair lookup
+      const parts = rawTrimmed.split(/\s+/);
+      const firstPart = parts[0]?.toLowerCase().replace(/^\//, '') || '';
+      if ((firstPart === '7d' || firstPart === 'history') && parts[1]) {
+        await this.handlePairSelected(parts[1].toUpperCase());
         return;
-      }
-
-      // 5. Net PnL & Status
-      if (
-        firstWord === 'netpnl' ||
-        firstWord === 'pnl' ||
-        firstWord === 'status' ||
-        firstWord === 'info' ||
-        firstWord === 'health' ||
-        lower.includes('net pnl') ||
-        lower.includes('netpnl')
-      ) {
-        await this.handleNetPnl();
-        return;
-      }
-
-      if (firstWord === 'unfreeze' || lower.includes('unfreeze') || lower.includes('resume')) {
-        if (this.unfreezeAutoExecution) this.unfreezeAutoExecution();
-        await this.telegramNotifier.sendMessage('🟢 *Automated trade execution is now UNFROZEN.*');
-        return;
-      }
-
-      if (firstWord === 'freeze' || (lower.includes('freeze') && !lower.includes('unfreeze')) || lower.includes('pause')) {
-        if (this.freezeAutoExecution) this.freezeAutoExecution();
-        await this.telegramNotifier.sendMessage('❄️ *Automated trade execution is now FROZEN.*');
-        return;
-      }
-
-      if (firstWord === 'help' || firstWord === 'commands' || firstWord === 'start' || firstWord === 'menu' || firstWord === '?') {
-        await this.handleHelp();
-        return;
-      }
-
-      if (firstWord === '7d' || firstWord === 'history') {
-        if (parts.length >= 2) {
-          const symbol = (parts[1] || '').toUpperCase();
-          if (symbol) {
-            await this.handlePairSelected(symbol);
-            return;
-          }
-        }
       }
 
       const candidateSymbol = rawTrimmed.toUpperCase().replace(/^\//, '').replace(/USDT$/, '');
-      const reservedWords = new Set(['HELP', 'START', 'MENU', 'STATUS', 'WALLET', 'TRADES', 'POS', 'FLATTEN', 'TEST', 'DASHBOARD', 'DASH', 'TOP', 'TOP10', 'CURRENT', 'NETPNL', 'PNL', 'FREEZE', 'UNFREEZE']);
-      if (/^[A-Z0-9]{2,10}$/.test(candidateSymbol) && parts.length === 1 && !reservedWords.has(candidateSymbol)) {
+      const reserved = new Set(['HELP', 'START', 'MENU', 'STATUS', 'WALLET', 'TRADES', 'POS', 'FLATTEN', 'TEST', 'DASHBOARD', 'DASH', 'TOP', 'TOP10', 'CURRENT', 'NETPNL', 'PNL', 'FREEZE', 'UNFREEZE']);
+      if (/^[A-Z0-9]{2,10}$/.test(candidateSymbol) && parts.length === 1 && !reserved.has(candidateSymbol)) {
         await this.handlePairSelected(candidateSymbol);
         return;
       }
 
+      // Fallback response with the 6 core options
       const fallbackMsg = [
         `❓ Unknown command: \`${text}\``,
         '',
         '🤖 *Available Options:*',
         '1️⃣ /flatten — 🚨 Flatten for Emergency (100% USDT)',
-        '2️⃣ /current — 📋 Current Trade Details & Positions',
+        '2️⃣ /current — 📊 Current Trade Details & Positions',
         '3️⃣ /next — 🎯 Next Trade Plan & Sizing Forecast',
         '4️⃣ /top10 — 📈 Top 10 Cross-Exchange Funding Spreads',
         '5️⃣ /wallet — 💼 Binance & Bybit Balances & Margin',
@@ -456,6 +338,37 @@ export class TelegramCommander {
     } finally {
       this.isProcessingCommand = false;
     }
+  }
+
+  private parseOpportunity(opp: any, now: number): ParsedOpportunity {
+    const coin = opp.mapping ? opp.mapping.normalized_symbol : opp.symbol || 'UNKNOWN';
+    const bSymbol = opp.mapping ? opp.mapping.binance_symbol : `${coin}USDT`;
+    const bySymbol = opp.mapping ? opp.mapping.bybit_symbol : `${coin}USDT`;
+
+    const bRatePct = parseFloat((parseFloat((opp.binanceRate || 0).toString()) * 100).toFixed(4));
+    const byRatePct = parseFloat((parseFloat((opp.bybitRate || 0).toString()) * 100).toFixed(4));
+    const spreadPct = parseFloat((opp.fundingDiffPct || opp.diffPct || Math.abs(bRatePct - byRatePct)).toFixed(4));
+    const aprPct = parseFloat((spreadPct * 3 * 365).toFixed(1));
+
+    const targetTime = opp.targetFundingTimeMs || opp.nextFundingTimeMs || 0;
+    const msLeft = Math.max(0, targetTime - now);
+    const hours = Math.floor(msLeft / 3600000);
+    const mins = Math.floor((msLeft % 3600000) / 60000);
+    const timeStr = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+    const direction = opp.fundingDirection || (bRatePct >= byRatePct ? 'SHORT_BINANCE_LONG_BYBIT' : 'LONG_BINANCE_SHORT_BYBIT');
+
+    return {
+      coin,
+      bSymbol,
+      bySymbol,
+      bRatePct,
+      byRatePct,
+      spreadPct,
+      aprPct,
+      targetTime,
+      timeStr,
+      direction,
+    };
   }
 
   public async handleDashboard(messageId?: number): Promise<void> {
@@ -476,39 +389,14 @@ export class TelegramCommander {
 
       const enriched = await Promise.all(
         top10.map(async (opp, rank) => {
-          const coin = opp.mapping ? opp.mapping.normalized_symbol : opp.symbol || 'UNKNOWN';
-          const bSymbol = opp.mapping ? opp.mapping.binance_symbol : `${coin}USDT`;
-          const bySymbol = opp.mapping ? opp.mapping.bybit_symbol : `${coin}USDT`;
-
-          const bRatePct = parseFloat((parseFloat((opp.binanceRate || 0).toString()) * 100).toFixed(4));
-          const byRatePct = parseFloat((parseFloat((opp.bybitRate || 0).toString()) * 100).toFixed(4));
-          const spreadPct = parseFloat((opp.fundingDiffPct || opp.diffPct || Math.abs(bRatePct - byRatePct)).toFixed(4));
-          const aprPct = parseFloat((spreadPct * 3 * 365).toFixed(1));
-
-          const targetTime = opp.targetFundingTimeMs || 0;
-          const msLeft = Math.max(0, targetTime - now);
-          const hours = Math.floor(msLeft / 3600000);
-          const mins = Math.floor((msLeft % 3600000) / 60000);
-          const timeStr = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
-
+          const parsed = this.parseOpportunity(opp, now);
           let sevenDay: SevenDayFundingStats | null = null;
           if (this.historyService) {
             sevenDay = await this.historyService
-              .getSevenDayFundingHistory(bSymbol, bySymbol, coin)
+              .getSevenDayFundingHistory(parsed.bSymbol, parsed.bySymbol, parsed.coin)
               .catch(() => null);
           }
-
-          return {
-            rank: rank + 1,
-            coin,
-            bRatePct,
-            byRatePct,
-            spreadPct,
-            aprPct,
-            direction: opp.fundingDirection || (bRatePct >= byRatePct ? 'SHORT_BINANCE_LONG_BYBIT' : 'LONG_BINANCE_SHORT_BYBIT'),
-            timeStr,
-            sevenDay,
-          };
+          return { rank: rank + 1, ...parsed, sevenDay };
         })
       );
 
@@ -566,7 +454,7 @@ export class TelegramCommander {
       }
 
       inline_keyboard.push([
-        { text: '📋 Current Trade Details', callback_data: 'CURRENT' },
+        { text: '📊 Current Trade Details', callback_data: 'CURRENT' },
         { text: '💼 Wallets', callback_data: 'WALLET' },
       ]);
       inline_keyboard.push([
@@ -637,7 +525,6 @@ export class TelegramCommander {
       const secs = totalSec % 60;
       const countdownStr = hours > 0 ? `${hours}h ${mins}m ${secs}s` : `${mins}m ${secs}s`;
 
-            // Fetch instrument specs for dynamic common highest leverage
       const [binanceInsts, bybitInsts] = await Promise.allSettled([
         this.binanceClient.getInstruments(),
         this.bybitClient.getInstruments(),
@@ -698,7 +585,7 @@ export class TelegramCommander {
         `• *$50 Margin ($${p50.notional} Notional):* Gross \`${p50.gross}\`, Net *${p50.net} USDT*`,
         `• *$100 Margin ($${p100.notional} Notional):* Gross \`${p100.gross}\`, Net *${p100.net} USDT*`,
         `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-        `👇 *Use the buttons below to navigate funding analytics:*`
+        `👇 *Use the buttons below to navigate funding analytics:*`,
       ].join('\n');
 
       const inline_keyboard = [
@@ -723,21 +610,24 @@ export class TelegramCommander {
 
   private async handleHelp(): Promise<void> {
     const msg = [
-      `🤖 *FUNDING ARBITRAGE BOT — 5 CORE OPTIONS* 🤖`,
+      `🤖 *FUNDING ARBITRAGE BOT — 6 CORE OPTIONS* 🤖`,
       `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
       `1️⃣ */flatten* — 🚨 *Flatten for Emergency*`,
       `   Instantly market-closes 100% of open positions on Binance & Bybit to USDT.`,
       ``,
-      `2️⃣ */current* — 📋 *Current Trade Details*`,
+      `2️⃣ */current* — 📊 *Current Trade Details*`,
       `   Inspect active positions, open notionals, dynamic leverage, unrealized PnL, current funding rates, and countdown to next settlement.`,
       ``,
-      `3️⃣ */top10* — 📈 *Top 10 Funding Spreads*`,
+      `3️⃣ */next* — 🎯 *Next Trade Plan*`,
+      `   Upcoming candidate pair, spread, countdown to entry window, dynamic sizing forecast, and expected net profit breakdown.`,
+      ``,
+      `4️⃣ */top10* — 📈 *Top 10 Funding Spreads*`,
       `   Live highest cross-exchange funding opportunities across Binance & Bybit with APR and settlement countdown.`,
       ``,
-      `4️⃣ */wallet* — 💼 *Exchange Wallets*`,
+      `5️⃣ */wallet* — 💼 *Exchange Wallets*`,
       `   Live available balances, margin, and total equity on Binance Futures and Bybit Unified accounts.`,
       ``,
-      `5️⃣ */netpnl* — 💰 *Net PnL & Performance*`,
+      `6️⃣ */netpnl* — 💰 *Net PnL & Performance*`,
       `   Today realized net PnL, cumulative funding collected, completed trade count, and autonomous system status.`,
       `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
       `🛡️ *Strategy Invariants Locked in Code:*`,
@@ -746,7 +636,7 @@ export class TelegramCommander {
       `• *1-Leg Liquidation Recovery:* If one leg liquidates, surviving leg is immediately closed to 100% USDT and the bot immediately resumes scanning for new opportunities.`,
       `• *Multi-Cycle Carry:* In the next cycle, if the funding spread remains 0.08% or above, the bot holds through settlement to collect funding without duplicate fees.`,
       `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-      `💡 _Use the reply buttons below or tap any command._`
+      `💡 _Use the reply buttons below or tap any command._`,
     ].join('\n');
 
     await this.telegramNotifier.sendMessageWithMarkup(msg, this.telegramNotifier.getDefaultReplyKeyboard());
@@ -817,7 +707,7 @@ export class TelegramCommander {
 
       const inline_keyboard = [
         [
-          { text: '📋 Current Trade', callback_data: 'CURRENT' },
+          { text: '📊 Current Trade', callback_data: 'CURRENT' },
           { text: '📈 Top 10 Spreads', callback_data: 'TOP10' },
         ],
         [
@@ -849,26 +739,15 @@ export class TelegramCommander {
       const now = Date.now();
 
       const lines = top10.map((opp, idx) => {
-        const coin = opp.mapping ? opp.mapping.normalized_symbol : opp.symbol || 'UNKNOWN';
-        const edge = parseFloat((opp.fundingDiffPct || opp.diffPct || 0).toString()).toFixed(4);
-        const bRate = (parseFloat((opp.binanceRate || 0).toString()) * 100).toFixed(4);
-        const byRate = (parseFloat((opp.bybitRate || 0).toString()) * 100).toFixed(4);
-        const bSign = parseFloat(bRate) > 0 ? '+' : '';
-        const bySign = parseFloat(byRate) > 0 ? '+' : '';
-        const apr = (parseFloat(edge) * 3 * 365).toFixed(1);
-        const dir = opp.fundingDirection || (parseFloat(bRate) >= parseFloat(byRate) ? 'SHORT_BINANCE_LONG_BYBIT' : 'LONG_BINANCE_SHORT_BYBIT');
-        const dirShort = dir === 'SHORT_BINANCE_LONG_BYBIT' ? 'Short BI / Long BY' : 'Long BI / Short BY';
-
-        const targetTime = opp.targetFundingTimeMs || 0;
-        const msLeft = Math.max(0, targetTime - now);
-        const hours = Math.floor(msLeft / 3600000);
-        const mins = Math.floor((msLeft % 3600000) / 60000);
-        const timeStr = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+        const item = this.parseOpportunity(opp, now);
+        const bSign = item.bRatePct > 0 ? '+' : '';
+        const bySign = item.byRatePct > 0 ? '+' : '';
+        const dirShort = item.direction === 'SHORT_BINANCE_LONG_BYBIT' ? 'Short BI / Long BY' : 'Long BI / Short BY';
 
         return [
-          `*${idx + 1}. ${coin}* | Spread: *+${edge}%* (${apr}% APR)`,
-          `   • BI: \`${bSign}${bRate}%\` | BY: \`${bySign}${byRate}%\` (${dirShort})`,
-          `   • Settlement: in \`${timeStr}\``,
+          `*${idx + 1}. ${item.coin}* | Spread: *+${item.spreadPct}%* (${item.aprPct}% APR)`,
+          `   • BI: \`${bSign}${item.bRatePct}%\` | BY: \`${bySign}${item.byRatePct}%\` (${dirShort})`,
+          `   • Settlement: in \`${item.timeStr}\``,
         ].join('\n');
       });
 
@@ -877,12 +756,12 @@ export class TelegramCommander {
         `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
         ...lines,
         `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-        `⚡ *Auto-Execution:* Scans 600+ pairs continuously. Enters when net profit is positive after all fees and slippage.`
+        `⚡ *Auto-Execution:* Scans 600+ pairs continuously. Enters when net profit is positive after all fees and slippage.`,
       ].join('\n');
 
       const inline_keyboard = [
         [
-          { text: '📋 Current Trade', callback_data: 'CURRENT' },
+          { text: '📊 Current Trade', callback_data: 'CURRENT' },
           { text: '💼 Wallet', callback_data: 'WALLET' },
         ],
         [
@@ -928,7 +807,7 @@ export class TelegramCommander {
 
       const inline_keyboard = [
         [
-          { text: '📋 Current Trade', callback_data: 'CURRENT' },
+          { text: '📊 Current Trade', callback_data: 'CURRENT' },
           { text: '📈 Top 10 Spreads', callback_data: 'TOP10' },
         ],
         [
@@ -963,7 +842,6 @@ export class TelegramCommander {
       let topOpp = opps[0];
       let evaluated: any = null;
       let candidateRank = 1;
-      const skippedNotes: string[] = [];
 
       if (this.evaluateOpportunity) {
         for (let i = 0; i < Math.min(5, opps.length); i++) {
@@ -974,30 +852,21 @@ export class TelegramCommander {
               evaluated = evalResult;
               candidateRank = i + 1;
               break;
-            } else {
-              const reason = evalResult?.rejectionReason || 'Profit below threshold';
-              const sym = opps[i].mapping?.normalized_symbol || opps[i].symbol || `Rank ${i + 1}`;
-              skippedNotes.push(`• *#${i + 1} ${sym}:* ${reason}`);
-              if (i === 0) {
-                evaluated = evalResult;
-              }
+            } else if (i === 0) {
+              evaluated = evalResult;
             }
-          } catch (evalErr: any) {
-            skippedNotes.push(`• *#${i + 1}:* ${evalErr?.message || evalErr}`);
+          } catch {
+            // Check next
           }
         }
       }
 
-      const coin = topOpp.mapping ? topOpp.mapping.normalized_symbol : topOpp.symbol;
-      const bRate = (parseFloat((topOpp.binanceRate || 0).toString()) * 100).toFixed(4);
-      const byRate = (parseFloat((topOpp.bybitRate || 0).toString()) * 100).toFixed(4);
-      const edgePct = parseFloat((topOpp.fundingDiffPct || topOpp.diffPct || 0).toString()).toFixed(4);
-      const bSign = parseFloat(bRate) > 0 ? '+' : '';
-      const bySign = parseFloat(byRate) > 0 ? '+' : '';
-      const apr = (parseFloat(edgePct) * 3 * 365).toFixed(1);
-
       const now = Date.now();
-      const targetFundingTime = topOpp.targetFundingTimeMs || topOpp.nextFundingTimeMs || 0;
+      const parsed = this.parseOpportunity(topOpp, now);
+      const bSign = parsed.bRatePct > 0 ? '+' : '';
+      const bySign = parsed.byRatePct > 0 ? '+' : '';
+
+      const targetFundingTime = parsed.targetTime;
       const msUntilSettlement = Math.max(0, targetFundingTime - now);
       const totalSecSettlement = Math.floor(msUntilSettlement / 1000);
       const hoursSettlement = Math.floor(totalSecSettlement / 3600);
@@ -1030,8 +899,8 @@ export class TelegramCommander {
 
         sizingText = [
           `• *Sizing (${appliedLev}x Common Leverage):*`,
-          `  - Binance: ${biSide} \`${bQty} ${coin}\` (~$${bNotional} | $${bMargin} margin)`,
-          `  - Bybit: ${bySide} \`${byQty} ${coin}\` (~$${byNotional} | $${byMargin} margin)`,
+          `  - Binance: ${biSide} \`${bQty} ${parsed.coin}\` (~$${bNotional} | $${bMargin} margin)`,
+          `  - Bybit: ${bySide} \`${byQty} ${parsed.coin}\` (~$${byNotional} | $${byMargin} margin)`,
         ].join('\n');
 
         if (evaluated.profitability && evaluated.profitability.expectedNetProfitUsd) {
@@ -1058,9 +927,9 @@ export class TelegramCommander {
       }
 
       const msg = [
-        `🎯 *Upcoming Candidate:* \`#${candidateRank} ${coin}\``,
-        `• *Spread:* \`+${edgePct}%\` (${apr}% APR)`,
-        `• *Binance:* \`${bSign}${bRate}%\` | *Bybit:* \`${bySign}${byRate}%\``,
+        `🎯 *Upcoming Candidate:* \`#${candidateRank} ${parsed.coin}\``,
+        `• *Spread:* \`+${parsed.spreadPct}%\` (${parsed.aprPct}% APR)`,
+        `• *Binance:* \`${bSign}${parsed.bRatePct}%\` | *Bybit:* \`${bySign}${parsed.byRatePct}%\``,
         `• *Status:* ${statusText}`,
         `• *Entry Window Opens:* in \`${entryStr}\``,
         `• *Funding Settlement:* in \`${settlementStr}\``,
@@ -1070,7 +939,7 @@ export class TelegramCommander {
 
       const inline_keyboard = [
         [
-          { text: '📋 Current Trade', callback_data: 'CURRENT' },
+          { text: '📊 Current Trade', callback_data: 'CURRENT' },
           { text: '📈 Top 10 Spreads', callback_data: 'TOP10' },
         ],
         [
@@ -1088,7 +957,7 @@ export class TelegramCommander {
     }
   }
 
-  private async handleTrades(): Promise<void> {
+  public async handleTrades(): Promise<void> {
     try {
       const [binancePos, bybitPos] = await Promise.allSettled([
         this.binanceClient.getPositions(),
@@ -1108,7 +977,7 @@ export class TelegramCommander {
 
       if (bActive.length === 0 && byActive.length === 0) {
         const flatMsg = [
-          '📋 *CURRENT TRADE DETAILS*',
+          '📊 *CURRENT TRADE DETAILS*',
           '━━━━━━━━━━━━━━━━━━━━━━━━━━',
           '🛡️ *Status:* `All Accounts Flat (100% USDT)`',
           '• Binance: `No open positions`',
@@ -1164,7 +1033,7 @@ export class TelegramCommander {
       const pnlIcon = totalUnrealizedPnl >= 0 ? '🟢' : '🔴';
 
       const lines: string[] = [
-        '📋 *CURRENT TRADE DETAILS*',
+        '📊 *CURRENT TRADE DETAILS*',
         '━━━━━━━━━━━━━━━━━━━━━━━━━━',
         `${pnlIcon} *Total Unrealized PnL:* \`${pnlSign}$${totalUnrealizedPnl.toFixed(4)} USDT\``,
         `💼 *Open Notional:* \`$${totalNotional.toFixed(2)} USDT\``,
@@ -1228,25 +1097,6 @@ export class TelegramCommander {
       }
     } catch (err: any) {
       await this.telegramNotifier.sendMessage(`⚠️ Error flattening positions: ${err?.message || err}`);
-    }
-  }
-
-  private async handleDualTestOrder(): Promise<void> {
-    try {
-      await this.telegramNotifier.sendMessage('⚡ Initiating small dual test order across Binance and Bybit...');
-      const [biRes, byRes] = await Promise.allSettled([
-        executeTestOrder(this.binanceClient, { symbol: 'DOGEUSDT', autoClose: true }),
-        executeTestOrder(this.bybitClient, { symbol: 'DOGEUSDT', autoClose: true }),
-      ]);
-      const biOk = biRes.status === 'fulfilled' && biRes.value.success;
-      const byOk = byRes.status === 'fulfilled' && byRes.value.success;
-      if (biOk && byOk) {
-        await this.telegramNotifier.sendMessage(`✅ Dual test order completed successfully on both Binance and Bybit.`);
-      } else {
-        await this.telegramNotifier.sendMessage(`⚠️ Dual test order result: Binance ${biOk ? 'OK' : 'Error'}, Bybit ${byOk ? 'OK' : 'Error'}.`);
-      }
-    } catch (err: any) {
-      await this.telegramNotifier.sendMessage(`❌ Test order execution failed: ${err?.message || err}`);
     }
   }
 }
