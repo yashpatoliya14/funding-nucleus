@@ -178,12 +178,12 @@ describe('Integration Tests: Telegram Interactive Dashboard & Monitoring', () =>
     expect(dispatchedMessages[dispatchedMessages.length - 1]!.text).toContain('FROZEN');
   });
 
-  it('renders pair detail view with 7-day stats and 5x margin options', async () => {
+  it('renders pair detail view with 7-day stats and common highest leverage margin options', async () => {
     await commander.handlePairSelected('AKE');
     expect(dispatchedMessages.length).toBeGreaterThanOrEqual(1);
 
     const lastMsg = dispatchedMessages[dispatchedMessages.length - 1]!;
-    expect(lastMsg.text).toContain('PAIR DASHBOARD: AKE (5x LEVERAGE)');
+    expect(lastMsg.text).toContain('HIGHEST COMMON LEVERAGE');
     expect(lastMsg.text).toContain('Current Spread:');
     expect(lastMsg.text).toContain('$10 Margin');
     expect(lastMsg.text).toContain('$25 Margin');

@@ -546,7 +546,24 @@ export class TelegramCommander {
             const mins = Math.floor((totalSec % 3600) / 60);
             const secs = totalSec % 60;
             const countdownStr = hours > 0 ? `${hours}h ${mins}m ${secs}s` : `${mins}m ${secs}s`;
-            const lev = 5;
+            // Fetch instrument specs for dynamic common highest leverage
+            const [binanceInsts, bybitInsts] = await Promise.allSettled([
+                this.binanceClient.getInstruments(),
+                this.bybitClient.getInstruments(),
+            ]);
+            let bMax = 20;
+            let byMax = 25;
+            if (binanceInsts.status === 'fulfilled') {
+                const inst = binanceInsts.value.find((i) => i.symbol === bSymbol);
+                if (inst && inst.maxLeverage)
+                    bMax = inst.maxLeverage;
+            }
+            if (bybitInsts.status === 'fulfilled') {
+                const inst = bybitInsts.value.find((i) => i.symbol === bySymbol);
+                if (inst && inst.maxLeverage)
+                    byMax = inst.maxLeverage;
+            }
+            const lev = Math.min(bMax, byMax, this.defaultLeverageCap || 100);
             const calcPnL = (marginUsd) => {
                 const notional = marginUsd * lev;
                 const gross = notional * (spreadPct / 100);
@@ -565,11 +582,12 @@ export class TelegramCommander {
             const bSign = bRate > 0 ? '+' : '';
             const bySign = byRate > 0 ? '+' : '';
             const text = [
-                `📈 *PAIR DASHBOARD: ${cleanCoin} (5x LEVERAGE)*`,
+                `📈 *PAIR DASHBOARD: ${cleanCoin} (${lev}x HIGHEST COMMON LEVERAGE)*`,
                 `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
                 `💰 *Current Live Rates:*`,
-                `• Binance: \`${bSign}${bRate.toFixed(4)}%\``,
-                `• Bybit: \`${bySign}${byRate.toFixed(4)}%\``,
+                `• Binance: \`${bSign}${bRate.toFixed(4)}%\` (Max: \`${bMax}x\`)`,
+                `• Bybit: \`${bySign}${byRate.toFixed(4)}%\` (Max: \`${byMax}x\`)`,
+                `• Highest Common Leverage: *\`${lev}x\`* (Unified across exchanges)`,
                 `• Current Spread: *+${spreadPct.toFixed(4)}%* (${aprPct}% APR)`,
                 `• Direction: \`${direction}\``,
                 `• Next Payout in: \`${countdownStr}\``,
@@ -577,15 +595,15 @@ export class TelegramCommander {
                 `📅 *Last 7 Days Funding Rate Opportunity:*`,
                 `• 7D Cumulative Yield: *+${stats?.cumulativeReturnPct ?? 0}%*`,
                 `• Average Settlement Spread: \`+${stats?.averageSpreadPct ?? 0}%\``,
-                `• Edge Consistency (Win Rate): *${stats?.consistencyScorePct ?? 0}%* (${stats?.settlementCount ?? 0} settlements)`,
+                `• Edge Consistency (Win Rate): *+${stats?.consistencyScorePct ?? 0}%* (${stats?.settlementCount ?? 0} settlements)`,
                 `• Dominant Direction: \`${stats?.dominantDirection === 'SHORT_BINANCE_LONG_BYBIT' ? 'Short Binance / Long Bybit' : 'Long Binance / Short Bybit'}\``,
                 `• Arbitrage Edge Rating: ${stats?.hasStrongArbitrageEdge ? '🔥 *STRONG OPPORTUNITY*' : '⚖️ *MODERATE*'}`,
                 ``,
-                `⚡ *5x Leverage Net Profit Forecast (1 Settlement):*`,
-                `• *$10 Margin ($50 Notional):* Gross \`${p10.gross}\`, Net *${p10.net} USDT*`,
-                `• *$25 Margin ($125 Notional):* Gross \`${p25.gross}\`, Net *${p25.net} USDT*`,
-                `• *$50 Margin ($250 Notional):* Gross \`${p50.gross}\`, Net *${p50.net} USDT*`,
-                `• *$100 Margin ($500 Notional):* Gross \`${p100.gross}\`, Net *${p100.net} USDT*`,
+                `⚡ *${lev}x Common Highest Leverage Forecast (1 Settlement):*`,
+                `• *$10 Margin ($${p10.notional} Notional):* Gross \`${p10.gross}\`, Net *${p10.net} USDT*`,
+                `• *$25 Margin ($${p25.notional} Notional):* Gross \`${p25.gross}\`, Net *${p25.net} USDT*`,
+                `• *$50 Margin ($${p50.notional} Notional):* Gross \`${p50.gross}\`, Net *${p50.net} USDT*`,
+                `• *$100 Margin ($${p100.notional} Notional):* Gross \`${p100.gross}\`, Net *${p100.net} USDT*`,
                 `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
                 `👇 *Use the buttons below to navigate funding analytics:*`
             ].join('\n');

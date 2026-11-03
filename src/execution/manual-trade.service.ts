@@ -50,13 +50,6 @@ export class ManualTradeService {
   ): Promise<ManualTradeResult> {
     const rawSymbol = request.symbol.trim().toUpperCase();
     const marginUsd = Math.max(1, request.marginUsd || 10);
-    const leverage = 5; // STRICT REQUIREMENT: Always 5x leverage
-    const targetNotional = toDecimal(marginUsd).times(leverage);
-
-    logger.info(
-      { rawSymbol, marginUsd, leverage, targetNotional: targetNotional.toString() },
-      'Received manual trade request at fixed 5x leverage'
-    );
 
     // 1. Locate matched symbol mapping
     const allMappings = this.symbolCache.getAllActive();
@@ -116,6 +109,14 @@ export class ManualTradeService {
       throw new Error(`Could not locate contract specifications for ${coin}`);
     }
 
+    const leverage = Math.min(bInst.maxLeverage || 20, byInst.maxLeverage || 25, this.config.risk.default_leverage_cap || 100);
+    const targetNotional = toDecimal(marginUsd).times(leverage);
+
+    logger.info(
+      { rawSymbol, marginUsd, leverage, targetNotional: targetNotional.toString() },
+      'Received manual trade request with dynamic common highest leverage'
+    );
+
     // 3. Margin availability check
     const bUsdtBal = bBalances.find((b) => b.asset === 'USDT')?.availableBalance ?? toDecimal('0');
     const byUsdtBal = byBalances.find((b) => b.asset === 'USDT')?.availableBalance ?? toDecimal('0');
@@ -144,9 +145,9 @@ export class ManualTradeService {
       targetNotional,
       bRateInfo.markPrice,
       byRateInfo.markPrice,
-      { ...bInst, maxLeverage: 5 },
-      { ...byInst, maxLeverage: 5 },
-      5, // lock leverage cap to 5
+      { ...bInst, maxLeverage: leverage },
+      { ...byInst, maxLeverage: leverage },
+      leverage,
       this.config.execution.maximum_notional_mismatch_pct
     );
 
