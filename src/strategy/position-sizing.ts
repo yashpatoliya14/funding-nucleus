@@ -18,7 +18,7 @@ export class PositionSizer {
     bybitPrice: Decimal | string | number,
     binanceInst: InstrumentInfo,
     bybitInst: InstrumentInfo,
-    defaultLeverageCap: number = 5,
+    defaultLeverageCap: number = 100,
     maxMismatchPct: Decimal | string | number = '0.5'
   ): SizingResult {
     const targetNotional = toDecimal(targetNotionalUsd);

@@ -1,7 +1,7 @@
 import { roundToStep, toDecimal } from '../utils/decimal.js';
 import { RiskLimitViolationError } from '../utils/errors.js';
 export class PositionSizer {
-    static calculateSizing(targetNotionalUsd, binancePrice, bybitPrice, binanceInst, bybitInst, defaultLeverageCap = 5, maxMismatchPct = '0.5') {
+    static calculateSizing(targetNotionalUsd, binancePrice, bybitPrice, binanceInst, bybitInst, defaultLeverageCap = 100, maxMismatchPct = '0.5') {
         const targetNotional = toDecimal(targetNotionalUsd);
         const bPrice = toDecimal(binancePrice);
         const byPrice = toDecimal(bybitPrice);
