@@ -317,6 +317,57 @@ export class BybitClient implements IExchangeClient {
     };
   }
 
+  
+  async placePostOnlyOrder(order: OrderRequest, price: Decimal): Promise<OrderResult> {
+    const side = order.side === 'BUY' ? 'Buy' : 'Sell';
+    const params: Record<string, any> = {
+      category: 'linear',
+      symbol: order.symbol,
+      side,
+      orderType: 'Limit',
+      price: price.toString(),
+      qty: order.quantity.toString(),
+      orderLinkId: order.clientOrderId,
+      timeInForce: 'PostOnly',
+    };
+    if (order.reduceOnly) params['reduceOnly'] = true;
+
+    try {
+      const res = await this.requestApi<{ orderId: string; orderLinkId: string }>('POST', '/v5/order/create', params, true);
+      return {
+        exchange: this.exchangeName,
+        clientOrderId: order.clientOrderId,
+        exchangeOrderId: res.orderId,
+        symbol: order.symbol,
+        side: order.side,
+        orderType: 'MARKET',
+        status: 'PENDING',
+        requestedQuantity: order.quantity,
+        executedQuantity: toDecimal('0'),
+        averagePrice: price,
+        fee: toDecimal('0'),
+        feeCurrency: 'USDT',
+        isReduceOnly: Boolean(order.reduceOnly),
+        timestampMs: Date.now(),
+      };
+    } catch (err: any) {
+      logger.error({ err, order }, 'Bybit post-only order placement failed');
+      throw err;
+    }
+  }
+
+  async cancelOrder(symbol: string, clientOrderId: string, exchangeOrderId?: string): Promise<boolean> {
+    const params: Record<string, any> = { category: 'linear', symbol };
+    if (exchangeOrderId) params['orderId'] = exchangeOrderId;
+    else params['orderLinkId'] = clientOrderId;
+    try {
+      await this.requestApi<any>('POST', '/v5/order/cancel', params, true);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async placeMarketOrder(order: OrderRequest): Promise<OrderResult> {
     if (order.orderType !== 'MARKET') {
       throw new Error(`Enforcement violation: Order type must be MARKET, received: ${order.orderType}`);

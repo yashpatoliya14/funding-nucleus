@@ -252,6 +252,71 @@ export class BinanceClient {
         }
         return this.isDualSidePosition;
     }
+    async placePostOnlyOrder(order, price) {
+        const isHedgeMode = await this.syncPositionSideMode();
+        const params = {
+            symbol: order.symbol,
+            side: order.side,
+            type: 'LIMIT',
+            timeInForce: 'GTX',
+            price: price.toString(),
+            quantity: order.quantity.toString(),
+            newClientOrderId: order.clientOrderId,
+        };
+        if (isHedgeMode) {
+            params['positionSide'] = order.reduceOnly
+                ? (order.side === 'BUY' ? 'SHORT' : 'LONG')
+                : (order.side === 'BUY' ? 'LONG' : 'SHORT');
+        }
+        else {
+            params['positionSide'] = 'BOTH';
+            if (order.reduceOnly)
+                params['reduceOnly'] = 'true';
+        }
+        try {
+            const res = await this.requestApi('POST', '/fapi/v1/order', params, true);
+            const executedQty = toDecimal(res.executedQty || '0');
+            const cumQuote = toDecimal(res.cumQuote || '0');
+            const avgPrice = executedQty.isPositive() && !executedQty.isZero() ? cumQuote.dividedBy(executedQty) : toDecimal(res.avgPrice || price.toString());
+            let status = res.status;
+            if (status === 'NEW')
+                status = 'PENDING';
+            return {
+                exchange: this.exchangeName,
+                clientOrderId: order.clientOrderId,
+                exchangeOrderId: res.orderId ? res.orderId.toString() : null,
+                symbol: order.symbol,
+                side: order.side,
+                orderType: 'MARKET',
+                status,
+                requestedQuantity: order.quantity,
+                executedQuantity: executedQty,
+                averagePrice: avgPrice,
+                fee: toDecimal('0'),
+                feeCurrency: 'USDT',
+                isReduceOnly: Boolean(order.reduceOnly),
+                timestampMs: Number(res.updateTime || Date.now()),
+            };
+        }
+        catch (err) {
+            logger.error({ err, order }, 'Binance post-only order placement failed');
+            throw err;
+        }
+    }
+    async cancelOrder(symbol, clientOrderId, exchangeOrderId) {
+        const params = { symbol };
+        if (exchangeOrderId)
+            params['orderId'] = exchangeOrderId;
+        else
+            params['origClientOrderId'] = clientOrderId;
+        try {
+            await this.requestApi('DELETE', '/fapi/v1/order', params, true);
+            return true;
+        }
+        catch {
+            return false;
+        }
+    }
     async placeMarketOrder(order) {
         if (order.orderType !== 'MARKET') {
             throw new Error(`Enforcement violation: Order type must be MARKET, received: ${order.orderType}`);

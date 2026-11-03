@@ -187,6 +187,48 @@ export class PaperClient implements IExchangeClient {
     };
   }
 
+  
+  async placePostOnlyOrder(order: OrderRequest, price: Decimal): Promise<OrderResult> {
+    const book = await this.getOrderBook(order.symbol);
+    const bestBid = book.bids[0]?.price ?? toDecimal('0');
+    const bestAsk = book.asks[0]?.price ?? toDecimal('Infinity');
+
+    if (order.side === 'BUY' && price.greaterThanOrEqualTo(bestAsk)) {
+      throw new Error(`[${this.exchangeName.toUpperCase()}] PostOnly order would cross book as taker`);
+    }
+    if (order.side === 'SELL' && price.lessThanOrEqualTo(bestBid)) {
+      throw new Error(`[${this.exchangeName.toUpperCase()}] PostOnly order would cross book as taker`);
+    }
+
+    const fee = order.quantity.times(price).times(this.makerFeeRate);
+    const result: OrderResult = {
+      exchange: this.exchangeName,
+      clientOrderId: order.clientOrderId,
+      exchangeOrderId: `sim-maker-${Date.now()}`,
+      symbol: order.symbol,
+      side: order.side,
+      orderType: 'MARKET',
+      status: 'FILLED',
+      requestedQuantity: order.quantity,
+      executedQuantity: order.quantity,
+      averagePrice: price,
+      fee,
+      feeCurrency: 'USDT',
+      isReduceOnly: Boolean(order.reduceOnly),
+      timestampMs: Date.now(),
+    };
+    this.orders.set(order.clientOrderId, result);
+    return result;
+  }
+
+  async cancelOrder(symbol: string, clientOrderId: string): Promise<boolean> {
+    const ord = this.orders.get(clientOrderId);
+    if (ord && ord.status === 'PENDING') {
+      ord.status = 'CANCELLED';
+    }
+    return true;
+  }
+
   async placeMarketOrder(order: OrderRequest): Promise<OrderResult> {
     if (order.orderType !== 'MARKET') {
       throw new Error(`Enforcement violation: Order type must be MARKET, received: ${order.orderType}`);

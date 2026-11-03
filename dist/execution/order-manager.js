@@ -9,6 +9,58 @@ export class OrderManager {
         const ts = Date.now().toString().slice(-6);
         return `arb_${exchange.slice(0, 2)}_${shortTradeId}_${purpose.slice(0, 3)}_${ts}`;
     }
+    async executeMakerOrder(client, tradeId, symbol, side, quantity, price, purpose = 'ENTRY') {
+        const exchange = client.exchangeName;
+        const clientOrderId = this.generateClientOrderId(exchange, tradeId, side, purpose);
+        const now = new Date().toISOString();
+        const dbOrder = {
+            id: `ord-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+            trade_id: tradeId,
+            exchange,
+            client_order_id: clientOrderId,
+            exchange_order_id: null,
+            symbol,
+            side,
+            order_type: 'MARKET',
+            requested_quantity: quantity.toString(),
+            executed_quantity: '0',
+            average_price: price.toString(),
+            status: 'PENDING',
+            is_reduce_only: 0,
+            is_recovery: 0,
+            purpose,
+            error_message: null,
+            created_at: now,
+            updated_at: now,
+        };
+        this.orderRepo.create(dbOrder);
+        const orderReq = {
+            symbol,
+            side,
+            orderType: 'MARKET',
+            quantity,
+            clientOrderId,
+            reduceOnly: false,
+        };
+        if (client.placePostOnlyOrder) {
+            try {
+                const result = await client.placePostOnlyOrder(orderReq, price);
+                this.orderRepo.update({
+                    id: dbOrder.id,
+                    exchange_order_id: result.exchangeOrderId,
+                    status: result.status,
+                    executed_quantity: result.executedQuantity.toString(),
+                    average_price: result.averagePrice.toString(),
+                });
+                return result;
+            }
+            catch (postOnlyErr) {
+                logger.debug({ err: postOnlyErr?.message, clientOrderId }, 'PostOnly order failed or rejected as taker');
+                throw postOnlyErr;
+            }
+        }
+        return this.executeMarketOrder(client, tradeId, symbol, side, quantity, purpose, false);
+    }
     async executeMarketOrder(client, tradeId, symbol, side, quantity, purpose, reduceOnly = false) {
         const exchange = client.exchangeName;
         const clientOrderId = this.generateClientOrderId(exchange, tradeId, side, purpose);

@@ -31,7 +31,7 @@ export const AppConfigSchema = z.object({
   strategy: z
     .object({
       entry_lead_minutes: z.number().positive().default(10),
-      target_exit_delay_seconds: z.number().nonnegative().default(60),
+      target_exit_delay_seconds: z.number().nonnegative().default(15),
       minimum_net_profit_usd: z.number().nonnegative().default(0.01),
       minimum_funding_edge_pct: z.number().nonnegative().default(0.08),
       risk_buffer_usd: z.number().nonnegative().default(0.02),
@@ -40,10 +40,13 @@ export const AppConfigSchema = z.object({
       carry_min_retention_edge_pct: z.number().nonnegative().default(0.08),
       margin_rebalance_warning_usd: z.number().nonnegative().default(3.50),
       auto_execute_trades: z.boolean().default(true),
+      flash_mirage_filter_enabled: z.boolean().default(true),
+      min_historical_consistency_pct: z.number().nonnegative().default(50.0),
+      max_orderbook_spread_pct: z.number().nonnegative().default(0.20),
     })
     .default({
       entry_lead_minutes: 10,
-      target_exit_delay_seconds: 60,
+      target_exit_delay_seconds: 15,
       minimum_net_profit_usd: 0.01,
       minimum_funding_edge_pct: 0.08,
       risk_buffer_usd: 0.02,
@@ -52,6 +55,9 @@ export const AppConfigSchema = z.object({
       carry_min_retention_edge_pct: 0.08,
       margin_rebalance_warning_usd: 3.50,
       auto_execute_trades: true,
+      flash_mirage_filter_enabled: true,
+      min_historical_consistency_pct: 50.0,
+      max_orderbook_spread_pct: 0.20,
     }),
   execution: z
     .object({
@@ -62,6 +68,8 @@ export const AppConfigSchema = z.object({
       maximum_slippage_bps: z.number().positive().default(10),
       maximum_notional_mismatch_pct: z.number().nonnegative().default(0.5),
       reduce_only_exits: z.boolean().default(true),
+      maker_taker_hybrid_enabled: z.boolean().default(false),
+      maker_timeout_seconds: z.number().positive().default(3),
     })
     .default({
       order_type: 'MARKET',
@@ -71,6 +79,8 @@ export const AppConfigSchema = z.object({
       maximum_slippage_bps: 10,
       maximum_notional_mismatch_pct: 0.5,
       reduce_only_exits: true,
+      maker_taker_hybrid_enabled: false,
+      maker_timeout_seconds: 3,
     }),
   risk: z
     .object({

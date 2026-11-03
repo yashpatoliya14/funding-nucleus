@@ -254,6 +254,58 @@ export class BybitClient {
             takerRate: toDecimal(feeInfo.takerFeeRate || '0.00055'),
         };
     }
+    async placePostOnlyOrder(order, price) {
+        const side = order.side === 'BUY' ? 'Buy' : 'Sell';
+        const params = {
+            category: 'linear',
+            symbol: order.symbol,
+            side,
+            orderType: 'Limit',
+            price: price.toString(),
+            qty: order.quantity.toString(),
+            orderLinkId: order.clientOrderId,
+            timeInForce: 'PostOnly',
+        };
+        if (order.reduceOnly)
+            params['reduceOnly'] = true;
+        try {
+            const res = await this.requestApi('POST', '/v5/order/create', params, true);
+            return {
+                exchange: this.exchangeName,
+                clientOrderId: order.clientOrderId,
+                exchangeOrderId: res.orderId,
+                symbol: order.symbol,
+                side: order.side,
+                orderType: 'MARKET',
+                status: 'PENDING',
+                requestedQuantity: order.quantity,
+                executedQuantity: toDecimal('0'),
+                averagePrice: price,
+                fee: toDecimal('0'),
+                feeCurrency: 'USDT',
+                isReduceOnly: Boolean(order.reduceOnly),
+                timestampMs: Date.now(),
+            };
+        }
+        catch (err) {
+            logger.error({ err, order }, 'Bybit post-only order placement failed');
+            throw err;
+        }
+    }
+    async cancelOrder(symbol, clientOrderId, exchangeOrderId) {
+        const params = { category: 'linear', symbol };
+        if (exchangeOrderId)
+            params['orderId'] = exchangeOrderId;
+        else
+            params['orderLinkId'] = clientOrderId;
+        try {
+            await this.requestApi('POST', '/v5/order/cancel', params, true);
+            return true;
+        }
+        catch {
+            return false;
+        }
+    }
     async placeMarketOrder(order) {
         if (order.orderType !== 'MARKET') {
             throw new Error(`Enforcement violation: Order type must be MARKET, received: ${order.orderType}`);

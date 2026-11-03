@@ -1,5 +1,6 @@
 import { IExchangeClient } from './exchange.interface.js';
 import { AccountBalance, CommissionRates, FundingRateInfo, FundingTransaction, InstrumentInfo, OrderBook, OrderRequest, OrderResult, Position } from './types.js';
+import { Decimal } from '../utils/decimal.js';
 export interface BinanceClientOptions {
     apiKey: string;
     apiSecret: string;
@@ -28,6 +29,8 @@ export declare class BinanceClient implements IExchangeClient {
     getPositions(symbol?: string): Promise<Position[]>;
     getCommissionRates(symbol: string): Promise<CommissionRates>;
     syncPositionSideMode(): Promise<boolean>;
+    placePostOnlyOrder(order: OrderRequest, price: Decimal): Promise<OrderResult>;
+    cancelOrder(symbol: string, clientOrderId: string, exchangeOrderId?: string): Promise<boolean>;
     placeMarketOrder(order: OrderRequest): Promise<OrderResult>;
     getOrderStatus(symbol: string, clientOrderId: string, exchangeOrderId?: string): Promise<OrderResult>;
     getFundingHistory(symbol: string, startTime?: number, limit?: number): Promise<FundingTransaction[]>;

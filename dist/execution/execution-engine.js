@@ -98,13 +98,44 @@ export class ExecutionEngine {
                 ]);
                 logger.info({ coin, leverage: candidate.sizing.appliedLeverage }, 'Synchronized common leverage on Binance and Bybit');
             }
-            // Submit both market orders concurrently
-            const [bOrderResult, byOrderResult] = await Promise.allSettled([
-                this.orderManager.executeMarketOrder(this.binanceClient, tradeId, bSymbol, bSide, candidate.sizing.binanceQuantity, 'ENTRY', false),
-                this.orderManager.executeMarketOrder(this.bybitClient, tradeId, bySymbol, bySide, candidate.sizing.bybitQuantity, 'ENTRY', false),
-            ]);
-            const bOrder = bOrderResult.status === 'fulfilled' ? bOrderResult.value : null;
-            const byOrder = byOrderResult.status === 'fulfilled' ? byOrderResult.value : null;
+            // Execute entry orders (Maker-Taker hybrid or Parallel Market)
+            let bOrder = null;
+            let byOrder = null;
+            const hybridEnabled = Boolean(this.config.execution?.maker_taker_hybrid_enabled);
+            if (hybridEnabled) {
+                logger.info({ coin }, 'Attempting Maker-Taker Hybrid execution for 0.05% alpha boost');
+                try {
+                    const byBook = await this.bybitClient.getOrderBook(bySymbol, 5);
+                    const makerPrice = bySide === 'BUY'
+                        ? byBook.bids[0]?.price
+                        : byBook.asks[0]?.price;
+                    if (makerPrice && this.bybitClient.placePostOnlyOrder) {
+                        const makerResult = await this.orderManager.executeMakerOrder(this.bybitClient, tradeId, bySymbol, bySide, candidate.sizing.bybitQuantity, makerPrice, 'ENTRY');
+                        if (makerResult.status === 'FILLED' || !makerResult.executedQuantity.isZero()) {
+                            byOrder = makerResult;
+                            bOrder = await this.orderManager.executeMarketOrder(this.binanceClient, tradeId, bSymbol, bSide, candidate.sizing.binanceQuantity, 'ENTRY', false);
+                            logger.info({ coin, makerExchange: 'bybit' }, '🎉 Maker-Taker hybrid fill successful! Captured maker fee rebate.');
+                        }
+                        else {
+                            if (this.bybitClient.cancelOrder) {
+                                await this.bybitClient.cancelOrder(bySymbol, makerResult.clientOrderId, makerResult.exchangeOrderId || undefined).catch(() => { });
+                            }
+                        }
+                    }
+                }
+                catch (hybridErr) {
+                    logger.warn({ err: hybridErr?.message, coin }, 'Maker-taker attempt did not fill, falling back to guaranteed parallel market orders');
+                }
+            }
+            // If hybrid was disabled or did not fill, execute guaranteed parallel market orders
+            if (!bOrder || !byOrder) {
+                const [bOrderResult, byOrderResult] = await Promise.allSettled([
+                    this.orderManager.executeMarketOrder(this.binanceClient, tradeId, bSymbol, bSide, candidate.sizing.binanceQuantity, 'ENTRY', false),
+                    this.orderManager.executeMarketOrder(this.bybitClient, tradeId, bySymbol, bySide, candidate.sizing.bybitQuantity, 'ENTRY', false),
+                ]);
+                bOrder = bOrderResult.status === 'fulfilled' ? bOrderResult.value : null;
+                byOrder = byOrderResult.status === 'fulfilled' ? byOrderResult.value : null;
+            }
             this.reconciliation.recordFills(tradeId, bOrder, byOrder);
             // 4. Transition to ENTRY_RECONCILIATION
             currentState = this.stateMachine.transition(tradeId, currentState, 'ENTRY_RECONCILIATION', 'Reconciling entry orders and open positions');
@@ -276,12 +307,16 @@ export class ExecutionEngine {
                         logger.info({ tradeId, nextSpreadPct, minRetentionEdge, cycleCount }, 'Next cycle funding edge exceeds retention threshold. Carrying positions over!');
                         if (this.telegram) {
                             const dirShort = dir === 'SHORT_BINANCE_LONG_BYBIT' ? 'Short BI / Long BY' : 'Long BI / Short BY';
+                            const notionalTotal = candidate.sizing.binanceActualNotionalUsd.plus(candidate.sizing.bybitActualNotionalUsd);
+                            const avoidedFees = notionalTotal.times(0.0021).times(cycleCount);
+                            const totalGain = totalFundingReceived.plus(avoidedFees);
                             const carryMsg = [
                                 `🔄 *CUMULATIVE CARRY EXTENSION (Cycle ${cycleCount + 1})*`,
                                 `• *Pair:* \`${coin}\` (\`${dirShort}\`)`,
                                 `• *Next Spread:* \`+${nextSpreadPct.toFixed(4)}%\` (Min: \`${minRetentionEdge}%\`)`,
-                                `• *Cumulative Funding So Far:* \`+$${totalFundingReceived.toFixed(3)} USDT\``,
-                                `• *Zero Friction:* Holding position avoids duplicate taker fees!`,
+                                `• *Cumulative Funding Collected:* \`+${totalFundingReceived.toFixed(4)} USDT\``,
+                                `• *Avoided Fee Friction:* \`+${avoidedFees.toFixed(4)} USDT\` (Saved round-trip fees)`,
+                                `• *Total Compounded Gain:* \`+${totalGain.toFixed(4)} USDT\``,
                             ].join('\n');
                             await this.telegram.sendMessage(carryMsg);
                         }

@@ -33,6 +33,8 @@ export declare class PaperClient implements IExchangeClient {
     getBalances(): Promise<AccountBalance[]>;
     getPositions(symbol?: string): Promise<Position[]>;
     getCommissionRates(symbol: string): Promise<CommissionRates>;
+    placePostOnlyOrder(order: OrderRequest, price: Decimal): Promise<OrderResult>;
+    cancelOrder(symbol: string, clientOrderId: string): Promise<boolean>;
     placeMarketOrder(order: OrderRequest): Promise<OrderResult>;
     getOrderStatus(_symbol: string, clientOrderId: string, _exchangeOrderId?: string): Promise<OrderResult>;
     getFundingHistory(symbol: string, _startTime?: number, _limit?: number): Promise<FundingTransaction[]>;

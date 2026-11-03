@@ -35,6 +35,9 @@ export declare const AppConfigSchema: z.ZodObject<{
         carry_min_retention_edge_pct: z.ZodDefault<z.ZodNumber>;
         margin_rebalance_warning_usd: z.ZodDefault<z.ZodNumber>;
         auto_execute_trades: z.ZodDefault<z.ZodBoolean>;
+        flash_mirage_filter_enabled: z.ZodDefault<z.ZodBoolean>;
+        min_historical_consistency_pct: z.ZodDefault<z.ZodNumber>;
+        max_orderbook_spread_pct: z.ZodDefault<z.ZodNumber>;
     }, z.core.$strip>>;
     execution: z.ZodDefault<z.ZodObject<{
         order_type: z.ZodDefault<z.ZodLiteral<"MARKET">>;
@@ -44,6 +47,8 @@ export declare const AppConfigSchema: z.ZodObject<{
         maximum_slippage_bps: z.ZodDefault<z.ZodNumber>;
         maximum_notional_mismatch_pct: z.ZodDefault<z.ZodNumber>;
         reduce_only_exits: z.ZodDefault<z.ZodBoolean>;
+        maker_taker_hybrid_enabled: z.ZodDefault<z.ZodBoolean>;
+        maker_timeout_seconds: z.ZodDefault<z.ZodNumber>;
     }, z.core.$strip>>;
     risk: z.ZodDefault<z.ZodObject<{
         default_leverage_cap: z.ZodDefault<z.ZodNumber>;

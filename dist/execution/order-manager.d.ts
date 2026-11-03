@@ -7,6 +7,7 @@ export declare class OrderManager {
     private orderRepo;
     constructor(orderRepo: OrderRepository);
     generateClientOrderId(exchange: ExchangeName, tradeId: string, side: OrderSide, purpose: string): string;
+    executeMakerOrder(client: IExchangeClient, tradeId: string, symbol: string, side: OrderSide, quantity: Decimal, price: Decimal, purpose?: 'ENTRY' | 'EXIT' | 'RECOVERY'): Promise<OrderResult>;
     executeMarketOrder(client: IExchangeClient, tradeId: string, symbol: string, side: OrderSide, quantity: Decimal, purpose: 'ENTRY' | 'EXIT' | 'RECOVERY', reduceOnly?: boolean): Promise<OrderResult>;
 }
 //# sourceMappingURL=order-manager.d.ts.map

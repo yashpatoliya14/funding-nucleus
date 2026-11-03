@@ -5,6 +5,7 @@ import { ProfitabilityEngine, ProfitabilityResult } from './profitability-engine
 import { AppConfig } from '../config/schema.js';
 import { Decimal, toDecimal } from '../utils/decimal.js';
 import { logger } from '../utils/logger.js';
+import { FundingHistoryService, SevenDayFundingStats } from '../analytics/funding-history.service.js';
 
 export interface EvaluatedOpportunity {
   opportunity: ScannedOpportunity;
@@ -12,13 +13,16 @@ export interface EvaluatedOpportunity {
   profitability: ProfitabilityResult;
   isApproved: boolean;
   rejectionReason?: string;
+  sevenDayStats?: SevenDayFundingStats | null;
+  carryPotentialScore?: number;
 }
 
 export class OpportunityFilter {
   constructor(
     private binanceClient: IExchangeClient,
     private bybitClient: IExchangeClient,
-    private config: AppConfig
+    private config: AppConfig,
+    private historyService?: FundingHistoryService
   ) {}
 
   async evaluateOpportunity(opp: ScannedOpportunity): Promise<EvaluatedOpportunity> {
@@ -60,6 +64,82 @@ export class OpportunityFilter {
           isApproved: false,
           rejectionReason: 'Contract specification not found for matched symbols',
         };
+      }
+
+      // 1b. Orderbook bid-ask spread & liquidity check (Item 7: reject illiquid or blown-out order books)
+      const maxBookSpreadPct = this.config.strategy.max_orderbook_spread_pct ?? 0.20;
+      const bBid = binanceBook.bids[0]?.price;
+      const bAsk = binanceBook.asks[0]?.price;
+      const byBid = bybitBook.bids[0]?.price;
+      const byAsk = bybitBook.asks[0]?.price;
+
+      if (bBid && bAsk && !bBid.isZero()) {
+        const bSpreadPct = bAsk.minus(bBid).dividedBy(bBid).times(100).toNumber();
+        if (bSpreadPct > maxBookSpreadPct) {
+          return {
+            opportunity: opp,
+            sizing: {} as any,
+            profitability: {} as any,
+            isApproved: false,
+            rejectionReason: `Binance order book spread ${bSpreadPct.toFixed(3)}% is too wide (> ${maxBookSpreadPct}%)`,
+          };
+        }
+      }
+
+      if (byBid && byAsk && !byBid.isZero()) {
+        const bySpreadPct = byAsk.minus(byBid).dividedBy(byBid).times(100).toNumber();
+        if (bySpreadPct > maxBookSpreadPct) {
+          return {
+            opportunity: opp,
+            sizing: {} as any,
+            profitability: {} as any,
+            isApproved: false,
+            rejectionReason: `Bybit order book spread ${bySpreadPct.toFixed(3)}% is too wide (> ${maxBookSpreadPct}%)`,
+          };
+        }
+      }
+
+      // 1c. Flash Mirage & Rate Stability Filter (Item 7: Filter out flash liquidation mirages)
+      let stats: SevenDayFundingStats | null = null;
+      let carryScore = 50;
+
+      if (this.historyService) {
+        try {
+          stats = await this.historyService.getSevenDayFundingHistory(
+            opp.mapping.binance_symbol,
+            opp.mapping.bybit_symbol,
+            symbol
+          );
+          if (stats && stats.settlementCount >= 3) {
+            carryScore = stats.consistencyScorePct;
+
+            if (this.config.strategy.flash_mirage_filter_enabled) {
+              const minConsistency = this.config.strategy.min_historical_consistency_pct ?? 50.0;
+              if (stats.consistencyScorePct < minConsistency) {
+                return {
+                  opportunity: opp,
+                  sizing: {} as any,
+                  profitability: {} as any,
+                  isApproved: false,
+                  rejectionReason: `Flash rate mirage: low 7-day edge consistency (${stats.consistencyScorePct.toFixed(1)}% < ${minConsistency}%)`,
+                };
+              }
+
+              const oppDir = opp.fundingDirection;
+              if (stats.dominantDirection !== oppDir && stats.consistencyScorePct >= 65) {
+                return {
+                  opportunity: opp,
+                  sizing: {} as any,
+                  profitability: {} as any,
+                  isApproved: false,
+                  rejectionReason: `Flash rate inversion: current direction ${oppDir} opposes persistent 7-day trend (${stats.dominantDirection})`,
+                };
+              }
+            }
+          }
+        } catch (histErr: any) {
+          logger.debug({ symbol, err: histErr?.message }, 'Could not retrieve 7-day stats for stability check, proceeding with live rates');
+        }
       }
 
       // 2. Query dynamic maximum leverage for this specific coin directly from both exchanges
@@ -166,6 +246,8 @@ export class OpportunityFilter {
         sizing,
         profitability,
         isApproved: true,
+        sevenDayStats: stats,
+        carryPotentialScore: carryScore,
       };
     } catch (err: any) {
       logger.warn({ err: err?.message, symbol }, 'Opportunity evaluation failed');

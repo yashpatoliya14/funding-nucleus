@@ -22,7 +22,7 @@ strategy:
   entry_lead_minutes: 10
 
   # Seconds to wait after funding settlement before initiating flat exit
-  target_exit_delay_seconds: 60
+  target_exit_delay_seconds: 15
 
   # Minimum required net profit in USD after deducting all maker/taker fees and slippage
   # Lowered to 0.05 so smaller $50 notional positions are approved to trade
@@ -37,6 +37,11 @@ strategy:
   # Minimum spread edge required in subsequent cycles to CONTINUE holding (0.05%)
   # If spread falls below this or inverts, the bot automatically exits and locks in profits
   carry_min_retention_edge_pct: 0.08
+
+  # Flash Rate Mirage Filter: Reject transient liquidation spikes with low historical consistency
+  flash_mirage_filter_enabled: true
+  min_historical_consistency_pct: 50.0
+  max_orderbook_spread_pct: 0.20
 
   # Margin rebalance alert threshold (USD): if available margin on either exchange drops below this, alert immediately
   margin_rebalance_warning_usd: 3.50
@@ -56,6 +61,10 @@ execution:
 
   # Execute both exchange legs simultaneously for minimal unhedged execution window
   parallel_entry: true
+
+  # Maker-Taker Hybrid: Post limit order on higher-fee exchange, fallback to parallel market if unfilled within 3s
+  maker_taker_hybrid_enabled: true
+  maker_timeout_seconds: 3
 
   # Safety limit: Maximum seconds allowed in unhedged state before emergency abort & flatten
   maximum_unhedged_seconds: 10

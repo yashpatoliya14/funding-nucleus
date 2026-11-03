@@ -6,10 +6,12 @@ export class OpportunityFilter {
     binanceClient;
     bybitClient;
     config;
-    constructor(binanceClient, bybitClient, config) {
+    historyService;
+    constructor(binanceClient, bybitClient, config, historyService) {
         this.binanceClient = binanceClient;
         this.bybitClient = bybitClient;
         this.config = config;
+        this.historyService = historyService;
     }
     async evaluateOpportunity(opp) {
         const symbol = opp.mapping.normalized_symbol;
@@ -46,6 +48,72 @@ export class OpportunityFilter {
                     isApproved: false,
                     rejectionReason: 'Contract specification not found for matched symbols',
                 };
+            }
+            // 1b. Orderbook bid-ask spread & liquidity check (Item 7: reject illiquid or blown-out order books)
+            const maxBookSpreadPct = this.config.strategy.max_orderbook_spread_pct ?? 0.20;
+            const bBid = binanceBook.bids[0]?.price;
+            const bAsk = binanceBook.asks[0]?.price;
+            const byBid = bybitBook.bids[0]?.price;
+            const byAsk = bybitBook.asks[0]?.price;
+            if (bBid && bAsk && !bBid.isZero()) {
+                const bSpreadPct = bAsk.minus(bBid).dividedBy(bBid).times(100).toNumber();
+                if (bSpreadPct > maxBookSpreadPct) {
+                    return {
+                        opportunity: opp,
+                        sizing: {},
+                        profitability: {},
+                        isApproved: false,
+                        rejectionReason: `Binance order book spread ${bSpreadPct.toFixed(3)}% is too wide (> ${maxBookSpreadPct}%)`,
+                    };
+                }
+            }
+            if (byBid && byAsk && !byBid.isZero()) {
+                const bySpreadPct = byAsk.minus(byBid).dividedBy(byBid).times(100).toNumber();
+                if (bySpreadPct > maxBookSpreadPct) {
+                    return {
+                        opportunity: opp,
+                        sizing: {},
+                        profitability: {},
+                        isApproved: false,
+                        rejectionReason: `Bybit order book spread ${bySpreadPct.toFixed(3)}% is too wide (> ${maxBookSpreadPct}%)`,
+                    };
+                }
+            }
+            // 1c. Flash Mirage & Rate Stability Filter (Item 7: Filter out flash liquidation mirages)
+            let stats = null;
+            let carryScore = 50;
+            if (this.historyService) {
+                try {
+                    stats = await this.historyService.getSevenDayFundingHistory(opp.mapping.binance_symbol, opp.mapping.bybit_symbol, symbol);
+                    if (stats && stats.settlementCount >= 3) {
+                        carryScore = stats.consistencyScorePct;
+                        if (this.config.strategy.flash_mirage_filter_enabled) {
+                            const minConsistency = this.config.strategy.min_historical_consistency_pct ?? 50.0;
+                            if (stats.consistencyScorePct < minConsistency) {
+                                return {
+                                    opportunity: opp,
+                                    sizing: {},
+                                    profitability: {},
+                                    isApproved: false,
+                                    rejectionReason: `Flash rate mirage: low 7-day edge consistency (${stats.consistencyScorePct.toFixed(1)}% < ${minConsistency}%)`,
+                                };
+                            }
+                            const oppDir = opp.fundingDirection;
+                            if (stats.dominantDirection !== oppDir && stats.consistencyScorePct >= 65) {
+                                return {
+                                    opportunity: opp,
+                                    sizing: {},
+                                    profitability: {},
+                                    isApproved: false,
+                                    rejectionReason: `Flash rate inversion: current direction ${oppDir} opposes persistent 7-day trend (${stats.dominantDirection})`,
+                                };
+                            }
+                        }
+                    }
+                }
+                catch (histErr) {
+                    logger.debug({ symbol, err: histErr?.message }, 'Could not retrieve 7-day stats for stability check, proceeding with live rates');
+                }
             }
             // 2. Query dynamic maximum leverage for this specific coin directly from both exchanges
             let bMaxLev = bInst.maxLeverage || 20;
@@ -123,6 +191,8 @@ export class OpportunityFilter {
                 sizing,
                 profitability,
                 isApproved: true,
+                sevenDayStats: stats,
+                carryPotentialScore: carryScore,
             };
         }
         catch (err) {

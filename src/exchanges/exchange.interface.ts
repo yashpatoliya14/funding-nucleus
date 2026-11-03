@@ -55,6 +55,16 @@ export interface IExchangeClient {
   placeMarketOrder(order: OrderRequest): Promise<OrderResult>;
 
   /**
+   * Places a Post-Only / Maker limit order for fee optimization.
+   */
+  placePostOnlyOrder?(order: OrderRequest, price: any): Promise<OrderResult>;
+
+  /**
+   * Cancels an open order by symbol and clientOrderId or exchangeOrderId.
+   */
+  cancelOrder?(symbol: string, clientOrderId: string, exchangeOrderId?: string): Promise<boolean>;
+
+  /**
    * Reconciles order execution status by client order ID or exchange order ID.
    */
   getOrderStatus(symbol: string, clientOrderId: string, exchangeOrderId?: string): Promise<OrderResult>;

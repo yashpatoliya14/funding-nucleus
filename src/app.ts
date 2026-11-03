@@ -124,7 +124,13 @@ export class FundingArbitrageApp {
       config.appConfig.strategy.require_aligned_funding_events
     );
     this.marketHealth = new MarketHealth(this.binanceClient, this.bybitClient);
-    this.opportunityFilter = new OpportunityFilter(this.binanceClient, this.bybitClient, config.appConfig);
+    this.historyService = new FundingHistoryService();
+    this.opportunityFilter = new OpportunityFilter(
+      this.binanceClient,
+      this.bybitClient,
+      config.appConfig,
+      this.historyService
+    );
 
     // 5. Risk Controls
     this.circuitBreaker = new CircuitBreaker(riskRepo);

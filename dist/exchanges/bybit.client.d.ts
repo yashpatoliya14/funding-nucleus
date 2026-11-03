@@ -1,5 +1,6 @@
 import { IExchangeClient } from './exchange.interface.js';
 import { AccountBalance, CommissionRates, FundingRateInfo, FundingTransaction, InstrumentInfo, OrderBook, OrderRequest, OrderResult, Position } from './types.js';
+import { Decimal } from '../utils/decimal.js';
 export interface BybitClientOptions {
     apiKey: string;
     apiSecret: string;
@@ -23,6 +24,8 @@ export declare class BybitClient implements IExchangeClient {
     getBalances(): Promise<AccountBalance[]>;
     getPositions(symbol?: string): Promise<Position[]>;
     getCommissionRates(symbol: string): Promise<CommissionRates>;
+    placePostOnlyOrder(order: OrderRequest, price: Decimal): Promise<OrderResult>;
+    cancelOrder(symbol: string, clientOrderId: string, exchangeOrderId?: string): Promise<boolean>;
     placeMarketOrder(order: OrderRequest): Promise<OrderResult>;
     getOrderStatus(symbol: string, clientOrderId: string, exchangeOrderId?: string): Promise<OrderResult>;
     private mapBybitOrder;
