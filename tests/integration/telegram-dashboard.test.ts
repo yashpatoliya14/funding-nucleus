@@ -106,7 +106,7 @@ describe('Integration Tests: Telegram Interactive Dashboard & Monitoring', () =>
     expect(lastMsg.text).toContain('MANUAL ONLY (Auto-Trade Frozen)');
     expect(lastMsg.text).toContain('AKE');
     expect(lastMsg.text).toContain('IOST');
-    expect(lastMsg.text).toContain('STRICT 5x ONLY');
+    expect(lastMsg.text).toContain('Common Highest Dynamic Leverage');
   });
 
   it('dispatches the registered dashboard slash command', async () => {
@@ -121,17 +121,11 @@ describe('Integration Tests: Telegram Interactive Dashboard & Monitoring', () =>
     const buttons = keyboard.keyboard.flat().map((button: { text: string }) => button.text);
 
     expect(buttons).toEqual([
-      '📊 Top 10 Dashboard',
-      '📈 Funding Spreads',
-      '🗓️ 7-Day History',
-      '🎯 Next Trade Plan',
-      '💼 Wallet & Margin',
-      '🤖 Bot Status',
-      '📋 Current Trade Details',
-      '❄️ Freeze Auto-Trade',
-      '🟢 Unfreeze Auto-Trade',
-      '🚨 Emergency Flatten',
-      '❓ Help & Commands',
+      '🚨 Flatten for Emergency',
+      '📊 Current Trade Details',
+      '📈 Top 10',
+      '💼 Wallet',
+      '💰 Net PnL',
     ]);
   });
 
@@ -237,7 +231,7 @@ describe('Integration Tests: Telegram Interactive Dashboard & Monitoring', () =>
     // Check positions and margin
     const triggered = await sentinel.checkPositionsAndMargin();
     expect(triggered).toBe(true);
-    expect(killSwitch.isEngaged()).toBe(true);
+    expect(killSwitch.isEngaged()).toBe(false);
 
     // Verify surviving leg was flattened
     const afterPos = await binanceClient.getPositions();

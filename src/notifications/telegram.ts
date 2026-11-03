@@ -126,16 +126,12 @@ export class TelegramNotifier {
     if (!this.enabled || !this.botToken) return false;
 
     const commands = [
-      { command: 'dashboard', description: '📊 Top 10 Spreads & 7D Stats' },
-      { command: 'top10', description: '📊 Top 10 Funding Spreads & Analytics' },
-      { command: 'history', description: '📈 7-Day Funding Rate Analytics (e.g. /history BTC)' },
-      { command: 'wallet', description: '💼 Binance & Bybit Balances & Margin' },
-      { command: 'next', description: '🎯 Next Planned Trade Forecast & Timing' },
-      { command: 'status', description: '🤖 Bot Health, Execution Mode & Net PnL' },
-      { command: 'freeze', description: '❄️ Freeze Auto-Trade (Manual Only)' },
-      { command: 'unfreeze', description: '🟢 Unfreeze Auto-Trade (Autonomous)' },
       { command: 'flatten', description: '🚨 Emergency Stop: Flatten All Positions (100% USDT)' },
-      { command: 'help', description: '❓ Complete Command List & Usage Guide' },
+      { command: 'current', description: '📊 Current Active Trade Details & Positions' },
+      { command: 'top10', description: '📈 Top 10 Cross-Exchange Funding Spreads' },
+      { command: 'wallet', description: '💼 Binance & Bybit Balances & Margin' },
+      { command: 'netpnl', description: '💰 Today Realized Net PnL & Performance' },
+      { command: 'help', description: '❓ Commands Reference Guide' },
     ];
 
     try {
@@ -178,27 +174,15 @@ export class TelegramNotifier {
     return {
       keyboard: [
         [
-          { text: '📊 Top 10 Dashboard' },
-          { text: '📈 Funding Spreads' },
+          { text: '🚨 Flatten for Emergency' },
         ],
         [
-          { text: '🗓️ 7-Day History' },
+          { text: '📊 Current Trade Details' },
+          { text: '📈 Top 10' },
         ],
         [
-          { text: '🎯 Next Trade Plan' },
-          { text: '💼 Wallet & Margin' },
-        ],
-        [
-          { text: '🤖 Bot Status' },
-          { text: '📋 Current Trade Details' },
-        ],
-        [
-          { text: '❄️ Freeze Auto-Trade' },
-          { text: '🟢 Unfreeze Auto-Trade' },
-        ],
-        [
-          { text: '🚨 Emergency Flatten' },
-          { text: '❓ Help & Commands' },
+          { text: '💼 Wallet' },
+          { text: '💰 Net PnL' },
         ],
       ],
       resize_keyboard: true,

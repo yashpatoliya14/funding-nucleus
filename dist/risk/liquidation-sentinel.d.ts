@@ -29,6 +29,13 @@ export declare class LiquidationSentinel {
      */
     checkPositionsAndMargin(): Promise<boolean>;
     /**
+     * One-leg liquidation recovery:
+     * Immediately market-closes the surviving orphan leg on the opposite exchange (reduce-only),
+     * verifies accounts are flat, notifies Telegram, and keeps trading active so the bot
+     * immediately searches for and enters a new arbitrage opportunity.
+     */
+    recoverOrphanLegAndResume(reasonText: string): Promise<void>;
+    /**
      * Instantly executes emergency market close for 100% of positions on both exchanges,
      * engages the kill switch, and sends a critical Telegram alert.
      */

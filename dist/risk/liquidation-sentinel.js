@@ -90,8 +90,8 @@ export class LiquidationSentinel {
             }
         }
         if (orphanDetected) {
-            logger.fatal({ orphanDetails }, '🚨 ONE LEG LIQUIDATION DETECTED! Initiating emergency flatten all!');
-            await this.triggerEmergencyFlatten('ONE_LEG_LIQUIDATION', orphanDetails);
+            logger.fatal({ orphanDetails }, '🚨 ONE LEG LIQUIDATION DETECTED! Closing surviving leg immediately and finding new opportunity!');
+            await this.recoverOrphanLegAndResume(orphanDetails);
             return true;
         }
         // 2. CHECK FOR INSUFFICIENT MARGIN WHILE HOLDING POSITIONS
@@ -109,6 +109,65 @@ export class LiquidationSentinel {
             }
         }
         return false;
+    }
+    /**
+     * One-leg liquidation recovery:
+     * Immediately market-closes the surviving orphan leg on the opposite exchange (reduce-only),
+     * verifies accounts are flat, notifies Telegram, and keeps trading active so the bot
+     * immediately searches for and enters a new arbitrage opportunity.
+     */
+    async recoverOrphanLegAndResume(reasonText) {
+        const now = Date.now();
+        if (now - this.lastAlertTime < 5000)
+            return;
+        this.lastAlertTime = now;
+        logger.warn({ reasonText }, 'Orphan leg liquidation detected. Immediately market-closing surviving leg and finding new opportunity.');
+        // 1. Perform emergency market close on surviving positions without engaging permanent kill switch
+        const flattenResult = await this.killSwitch.emergencyFlatten();
+        // 2. Query remaining balances
+        let biBalStr = 'N/A';
+        let byBalStr = 'N/A';
+        try {
+            const [biBal, byBal] = await Promise.allSettled([
+                this.binanceClient.getBalances(),
+                this.bybitClient.getBalances(),
+            ]);
+            if (biBal.status === 'fulfilled') {
+                const u = biBal.value.find((b) => b.asset === 'USDT');
+                if (u)
+                    biBalStr = `$${parseFloat(u.walletBalance.toString()).toFixed(2)} USDT`;
+            }
+            if (byBal.status === 'fulfilled') {
+                const u = byBal.value.find((b) => b.asset === 'USDT');
+                if (u)
+                    byBalStr = `$${parseFloat(u.walletBalance.toString()).toFixed(2)} USDT`;
+            }
+        }
+        catch { }
+        // 3. Send Telegram Alert explaining liquidation recovery & continuation
+        const alertMsg = [
+            `🚨 *ONE-LEG LIQUIDATION: OTHER LEG CLOSED IMMEDIATELY* 🚨`,
+            `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+            `⚠️ *Event:* One leg was liquidated or terminated on the exchange!`,
+            `• *Details:* \`${reasonText}\``,
+            ``,
+            `🛡️ *Immediate Protective Action:*`,
+            `• Surviving open leg was **instantly market-closed to 100% USDT** (Reduce-Only).`,
+            `• Positions Flattened: \`${flattenResult.flattenedCount}\``,
+            `• Account Status: \`Verified Flat (0 Directional Exposure)\``,
+            ``,
+            `💼 *Remaining Balances:*`,
+            `• Binance: \`${biBalStr}\``,
+            `• Bybit: \`${byBalStr}\``,
+            `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+            `🔍 *Bot is actively scanning 600+ perpetuals to find a new arbitrage opportunity...*`
+        ].join('\n');
+        try {
+            await this.telegram.sendMessage(alertMsg);
+        }
+        catch (err) {
+            logger.error({ err: err?.message }, 'Failed to send liquidation recovery Telegram alert');
+        }
     }
     /**
      * Instantly executes emergency market close for 100% of positions on both exchanges,

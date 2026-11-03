@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { StateMachineError } from '../utils/errors.js';
 import { logger } from '../utils/logger.js';
 const VALID_TRANSITIONS = {
@@ -49,7 +50,7 @@ export class TradeStateMachine {
         const now = new Date().toISOString();
         // 1. Persist state transition history
         this.transitionRepo.record({
-            id: `st-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+            id: `st-${Date.now()}-${randomUUID()}`,
             trade_id: tradeId,
             from_state: currentState,
             to_state: nextState,

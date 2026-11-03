@@ -66,7 +66,7 @@ export class FundingArbitrageApp {
   private dailyRepo: DailySummaryRepository;
   private lockFilePath: string;
   private isRunning: boolean = false;
-  private isAutoExecutionFrozen: boolean = true;
+  private isAutoExecutionFrozen: boolean = false;
   private lastPeriodicReportTime: number = 0;
 
   constructor(private config: FullConfig) {
@@ -214,8 +214,8 @@ export class FundingArbitrageApp {
         },
         entryLeadMinutes: config.appConfig.strategy.entry_lead_minutes,
         marginPerLegUsd: parseFloat(process.env.TRADE_MARGIN_PER_LEG_USD || '10') || 10,
-        defaultLeverageCap: 5,
-        minFundingEdgePct: config.appConfig.strategy.minimum_funding_edge_pct || 0.15,
+        defaultLeverageCap: config.appConfig.risk.default_leverage_cap || 100,
+        minFundingEdgePct: config.appConfig.strategy.minimum_funding_edge_pct || 0.08,
         historyService: this.historyService,
         sentinel: this.sentinel,
         symbolCache: this.symbolCache,
@@ -311,22 +311,21 @@ export class FundingArbitrageApp {
     const modeEmoji = isLive ? '🟢' : '🟡';
 
     const startupMessage = [
-      `🤖 *Funding Arbitrage Bot Online* (\`${modeStr}\`)`,
-      `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-      `⚡ *Execution Mode:* \`${this.isAutoExecutionFrozen ? '❄️ MANUAL ONLY (Auto-Trade Frozen)' : '🟢 AUTO-EXECUTE ENABLED'}\``,
-      `⚖️ *Leverage:* \`Strict 5x Only\``,
-      `🛡️ *Liquidation Sentinel:* \`Active (Instant Flatten on 1-Leg Liquidation / Margin Drop)\``,
-      `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-      `💬 *Interactive Telegram Commands:*\n`,
-      `• *dashboard* — Live Top 10 Dashboard with funding spreads and 7-day stats`,
-      `• *7d <pair>* — 7-day historical funding rate performance & edge`,
-      `• *freeze* / *unfreeze* — Toggle automatic trade execution`,
-      `• *next* — Next trade plan, margin & profit forecast`,
-      `• *wallet* — Binance & Bybit wallet balances & margin`,
-      `• *top10* — Top 10 highest funding rate spreads & 7-day stats`,
-      `• *status* — System health & today's PnL`,
-      `• *flatten* — 🚨 Instant Emergency Stop: Close all positions to 100% USDT`,
-      `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+      `🤖 *Autonomous Funding Arbitrage Bot Online* (\`${modeStr}\`)`,
+      '━━━━━━━━━━━━━━━━━━━━━━━━━━',
+      '⚡ *Execution Mode:* `🟢 100% Autonomous (Auto-Execution Active)`',
+      '⚖️ *Leverage:* `Highest Common Dynamic Leverage`',
+      '🛡️ *Liquidation Sentinel:* `Active (Auto-Closes Surviving Leg & Finds New Opportunity)`',
+      `📈 *Min Spread Entry:* \`${this.config.appConfig.strategy.minimum_funding_edge_pct}%\``,
+      `🔄 *Carry Retention:* \`${this.config.appConfig.strategy.carry_min_retention_edge_pct}%\``,
+      '━━━━━━━━━━━━━━━━━━━━━━━━━━',
+      '💬 *5 Bot Commands:*',
+      '1️⃣ /flatten — 🚨 Flatten for Emergency (100% USDT)',
+      '2️⃣ /current — 📋 Current Trade Details & Positions',
+      '3️⃣ /top10 — 📈 Top 10 Cross-Exchange Funding Spreads',
+      '4️⃣ /wallet — 💼 Binance & Bybit Balances & Margin',
+      '5️⃣ /netpnl — 💰 Today Realized Net PnL & Performance',
+      '━━━━━━━━━━━━━━━━━━━━━━━━━━',
       `_Scanning ${activeSymbols.length} perpetuals across Binance & Bybit..._`
     ].join('\n');
 

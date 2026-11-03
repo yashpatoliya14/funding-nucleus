@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { TradeState } from '../persistence/models.js';
 import { StateTransitionRepository, TradeRepository } from '../persistence/repositories.js';
 import { StateMachineError } from '../utils/errors.js';
@@ -54,7 +55,7 @@ export class TradeStateMachine {
 
     // 1. Persist state transition history
     this.transitionRepo.record({
-      id: `st-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      id: `st-${Date.now()}-${randomUUID()}`,
       trade_id: tradeId,
       from_state: currentState,
       to_state: nextState,

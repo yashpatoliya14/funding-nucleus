@@ -29,14 +29,14 @@ strategy:
   minimum_net_profit_usd: 0.05
 
   # Minimum required funding spread: 0.15% (164.25% Annualized APR) to guarantee pure profit after all fees
-  minimum_funding_edge_pct: 0.10
+  minimum_funding_edge_pct: 0.08
 
   # Cumulative carry holding: hold across cycles to collect multi-cycle funding and avoid repeat exit & entry fees
   cumulative_carry_enabled: true
 
   # Minimum spread edge required in subsequent cycles to CONTINUE holding (0.05%)
   # If spread falls below this or inverts, the bot automatically exits and locks in profits
-  carry_min_retention_edge_pct: 0.05
+  carry_min_retention_edge_pct: 0.08
 
   # Margin rebalance alert threshold (USD): if available margin on either exchange drops below this, alert immediately
   margin_rebalance_warning_usd: 3.50
@@ -46,6 +46,9 @@ strategy:
 
   # CRITICAL INVARIANT: Only trade pairs where Binance & Bybit settle at the identical timestamp
   require_aligned_funding_events: true
+
+  # Autonomous trade execution enabled
+  auto_execute_trades: true
 
 execution:
   # Market orders only (limit / maker orders strictly prohibited by execution invariants)
@@ -72,7 +75,7 @@ execution:
 risk:
   # Maximum leverage cap. The engine takes min(Binance Max, Bybit Max, leverage_cap).
   # Set higher (e.g. 25x or 50x) if you want the bot to use the maximum leverage supported by both exchanges.
-  default_leverage_cap: 25
+  default_leverage_cap: 100
 
   # Dollar exposure per single leg (e.g., $50 on Binance, $50 on Bybit)
   maximum_notional_per_leg_usd: 50.0

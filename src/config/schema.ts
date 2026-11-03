@@ -32,26 +32,26 @@ export const AppConfigSchema = z.object({
     .object({
       entry_lead_minutes: z.number().positive().default(10),
       target_exit_delay_seconds: z.number().nonnegative().default(60),
-      minimum_net_profit_usd: z.number().nonnegative().default(0.50),
-      minimum_funding_edge_pct: z.number().nonnegative().default(0.05),
-      risk_buffer_usd: z.number().nonnegative().default(0.10),
+      minimum_net_profit_usd: z.number().nonnegative().default(0.01),
+      minimum_funding_edge_pct: z.number().nonnegative().default(0.08),
+      risk_buffer_usd: z.number().nonnegative().default(0.02),
       require_aligned_funding_events: z.boolean().default(true),
       cumulative_carry_enabled: z.boolean().default(true),
-      carry_min_retention_edge_pct: z.number().nonnegative().default(0.05),
+      carry_min_retention_edge_pct: z.number().nonnegative().default(0.08),
       margin_rebalance_warning_usd: z.number().nonnegative().default(3.50),
-      auto_execute_trades: z.boolean().default(false),
+      auto_execute_trades: z.boolean().default(true),
     })
     .default({
       entry_lead_minutes: 10,
       target_exit_delay_seconds: 60,
-      minimum_net_profit_usd: 0.50,
-      minimum_funding_edge_pct: 0.05,
-      risk_buffer_usd: 0.10,
+      minimum_net_profit_usd: 0.01,
+      minimum_funding_edge_pct: 0.08,
+      risk_buffer_usd: 0.02,
       require_aligned_funding_events: true,
       cumulative_carry_enabled: true,
-      carry_min_retention_edge_pct: 0.05,
+      carry_min_retention_edge_pct: 0.08,
       margin_rebalance_warning_usd: 3.50,
-      auto_execute_trades: false,
+      auto_execute_trades: true,
     }),
   execution: z
     .object({
@@ -74,19 +74,19 @@ export const AppConfigSchema = z.object({
     }),
   risk: z
     .object({
-      default_leverage_cap: z.number().positive().default(5),
-      maximum_notional_per_leg_usd: z.number().positive().default(100),
+      default_leverage_cap: z.number().positive().default(100),
+      maximum_notional_per_leg_usd: z.number().positive().default(500),
       trade_margin_per_leg_usd: z.number().positive().optional(),
       maximum_concurrent_trades: z.number().int().positive().default(1),
-      maximum_daily_loss_usd: z.number().positive().default(5),
-      maximum_aggregate_notional_usd: z.number().positive().default(200),
+      maximum_daily_loss_usd: z.number().positive().default(10),
+      maximum_aggregate_notional_usd: z.number().positive().default(1000),
     })
     .default({
-      default_leverage_cap: 5,
-      maximum_notional_per_leg_usd: 100,
+      default_leverage_cap: 100,
+      maximum_notional_per_leg_usd: 500,
       maximum_concurrent_trades: 1,
-      maximum_daily_loss_usd: 5,
-      maximum_aggregate_notional_usd: 200,
+      maximum_daily_loss_usd: 10,
+      maximum_aggregate_notional_usd: 1000,
     }),
   monitoring: z
     .object({

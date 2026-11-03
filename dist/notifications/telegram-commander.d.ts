@@ -4,7 +4,6 @@ import { TelegramNotifier } from './telegram.js';
 import { CircuitBreaker } from '../risk/circuit-breaker.js';
 import { KillSwitch } from '../risk/kill-switch.js';
 import { FundingHistoryService } from '../analytics/funding-history.service.js';
-import { ManualTradeService } from '../execution/manual-trade.service.js';
 import { LiquidationSentinel } from '../risk/liquidation-sentinel.js';
 import { SymbolCache } from '../market-data/symbol-cache.js';
 export interface TelegramCommanderOptions {
@@ -24,7 +23,6 @@ export interface TelegramCommanderOptions {
     defaultLeverageCap?: number;
     minFundingEdgePct?: number;
     historyService?: FundingHistoryService;
-    manualTradeService?: ManualTradeService;
     sentinel?: LiquidationSentinel;
     symbolCache?: SymbolCache;
     isAutoExecutionFrozen?: () => boolean;
@@ -48,7 +46,6 @@ export declare class TelegramCommander {
     private defaultLeverageCap;
     private minFundingEdgePct;
     private historyService?;
-    private manualTradeService?;
     private sentinel?;
     private symbolCache?;
     private isAutoExecutionFrozen?;
@@ -67,27 +64,15 @@ export declare class TelegramCommander {
     private pollLoop;
     private handleCallbackQuery;
     private handleMessage;
-    /**
-     * Top 10 Arbitrage Opportunity Interactive Telegram Dashboard
-     */
     handleDashboard(messageId?: number): Promise<void>;
-    /**
-     * Pair Detail View: Shows 7-Day Funding Rate Historical Analysis & 5x Margin Buttons
-     */
     handlePairSelected(coin: string, messageId?: number): Promise<void>;
-    /**
-     * Executes a simultaneous delta-neutral trade on Binance & Bybit with strictly 5x leverage
-     */
-    handleExecuteTrade(coin: string, marginUsd: number): Promise<void>;
     private handleHelp;
     private handleWallet;
-    private handleTop10;
-    private handleStatus;
+    handleTop10(): Promise<void>;
+    handleNetPnl(): Promise<void>;
+    handleStatus(): Promise<void>;
     private handleNextPlannedTrade;
     private handleTrades;
-    /**
-     * Emergency Flatten: Instantly market closes 100% of positions on Binance & Bybit
-     */
     handleEmergencyFlatten(): Promise<void>;
     private handleDualTestOrder;
 }

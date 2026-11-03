@@ -27,7 +27,6 @@ import { MetricsCollector } from './monitoring/metrics.js';
 import { MarginMonitor } from './risk/margin-monitor.js';
 import { LiquidationSentinel } from './risk/liquidation-sentinel.js';
 import { FundingHistoryService } from './analytics/funding-history.service.js';
-import { ManualTradeService } from './execution/manual-trade.service.js';
 import { logger } from './utils/logger.js';
 import { sleep } from './utils/time.js';
 export class FundingArbitrageApp {
@@ -45,7 +44,6 @@ export class FundingArbitrageApp {
     marginMonitor;
     sentinel;
     historyService;
-    manualTradeService;
     executionEngine;
     telegram;
     telegramCommander;
@@ -55,7 +53,7 @@ export class FundingArbitrageApp {
     dailyRepo;
     lockFilePath;
     isRunning = false;
-    isAutoExecutionFrozen = true;
+    isAutoExecutionFrozen = false;
     lastPeriodicReportTime = 0;
     constructor(config) {
         this.config = config;
@@ -133,7 +131,6 @@ export class FundingArbitrageApp {
             checkIntervalMs: 3000,
             minEmergencyMarginUsd: 2.0,
         });
-        this.manualTradeService = new ManualTradeService(this.binanceClient, this.bybitClient, this.symbolCache, this.executionEngine, this.telegram, config.appConfig);
         if (config.appConfig.monitoring.telegram_enabled && config.env.TELEGRAM_BOT_TOKEN && config.env.TELEGRAM_CHAT_ID) {
             this.telegramCommander = new TelegramCommander({
                 botToken: config.env.TELEGRAM_BOT_TOKEN,
@@ -154,10 +151,9 @@ export class FundingArbitrageApp {
                 },
                 entryLeadMinutes: config.appConfig.strategy.entry_lead_minutes,
                 marginPerLegUsd: parseFloat(process.env.TRADE_MARGIN_PER_LEG_USD || '10') || 10,
-                defaultLeverageCap: 5,
-                minFundingEdgePct: config.appConfig.strategy.minimum_funding_edge_pct || 0.15,
+                defaultLeverageCap: config.appConfig.risk.default_leverage_cap || 100,
+                minFundingEdgePct: config.appConfig.strategy.minimum_funding_edge_pct || 0.08,
                 historyService: this.historyService,
-                manualTradeService: this.manualTradeService,
                 sentinel: this.sentinel,
                 symbolCache: this.symbolCache,
                 isAutoExecutionFrozen: () => this.isAutoExecutionFrozen,
@@ -238,23 +234,21 @@ export class FundingArbitrageApp {
         const isLive = this.config.appConfig.app.mode === 'live';
         const modeEmoji = isLive ? '🟢' : '🟡';
         const startupMessage = [
-            `🤖 *Funding Arbitrage Bot Online* (\`${modeStr}\`)`,
-            `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-            `⚡ *Execution Mode:* \`${this.isAutoExecutionFrozen ? '❄️ MANUAL ONLY (Auto-Trade Frozen)' : '🟢 AUTO-EXECUTE ENABLED'}\``,
-            `⚖️ *Leverage:* \`Strict 5x Only\``,
-            `🛡️ *Liquidation Sentinel:* \`Active (Instant Flatten on 1-Leg Liquidation / Margin Drop)\``,
-            `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-            `💬 *Interactive Telegram Commands:*\n`,
-            `• *dashboard* — Live Top 10 Dashboard with interactive 5x trade buttons`,
-            `• *trade <pair> <margin>* — Instant 5x simultaneous trade (e.g. \`trade AKE 10\`)`,
-            `• *7d <pair>* — 7-day historical funding rate performance & edge`,
-            `• *freeze* / *unfreeze* — Toggle automatic trade execution`,
-            `• *next* — Next trade plan, margin & profit forecast`,
-            `• *wallet* — Binance & Bybit wallet balances & margin`,
-            `• *top10* — Top 10 highest funding rate spreads & 7-day stats`,
-            `• *status* — System health & today's PnL`,
-            `• *flatten* — 🚨 Instant Emergency Stop: Close all positions to 100% USDT`,
-            `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+            `🤖 *Autonomous Funding Arbitrage Bot Online* (\`${modeStr}\`)`,
+            '━━━━━━━━━━━━━━━━━━━━━━━━━━',
+            '⚡ *Execution Mode:* `🟢 100% Autonomous (Auto-Execution Active)`',
+            '⚖️ *Leverage:* `Highest Common Dynamic Leverage`',
+            '🛡️ *Liquidation Sentinel:* `Active (Auto-Closes Surviving Leg & Finds New Opportunity)`',
+            `📈 *Min Spread Entry:* \`${this.config.appConfig.strategy.minimum_funding_edge_pct}%\``,
+            `🔄 *Carry Retention:* \`${this.config.appConfig.strategy.carry_min_retention_edge_pct}%\``,
+            '━━━━━━━━━━━━━━━━━━━━━━━━━━',
+            '💬 *5 Bot Commands:*',
+            '1️⃣ /flatten — 🚨 Flatten for Emergency (100% USDT)',
+            '2️⃣ /current — 📋 Current Trade Details & Positions',
+            '3️⃣ /top10 — 📈 Top 10 Cross-Exchange Funding Spreads',
+            '4️⃣ /wallet — 💼 Binance & Bybit Balances & Margin',
+            '5️⃣ /netpnl — 💰 Today Realized Net PnL & Performance',
+            '━━━━━━━━━━━━━━━━━━━━━━━━━━',
             `_Scanning ${activeSymbols.length} perpetuals across Binance & Bybit..._`
         ].join('\n');
         await this.telegram.sendMessage(startupMessage);
@@ -307,7 +301,7 @@ export class FundingArbitrageApp {
                         const coin = evaluated.opportunity.mapping.normalized_symbol;
                         const edgePct = parseFloat(evaluated.opportunity.fundingDiffPct.toString()).toFixed(4);
                         if (this.isAutoExecutionFrozen) {
-                            logger.info({ coin, edgePct: `${edgePct}%` }, '❄️ [MANUAL MODE] Opportunity approved in entry window, but automated trade execution is FROZEN. Standing by for manual trigger via Telegram.');
+                            logger.info({ coin, edgePct: `${edgePct}%` }, '❄️ [MANUAL MODE] Opportunity approved in entry window, but automated trade execution is FROZEN.');
                             await sleep(15000);
                             continue;
                         }

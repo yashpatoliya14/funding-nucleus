@@ -17,7 +17,6 @@ export declare class FundingArbitrageApp {
     private marginMonitor;
     private sentinel;
     private historyService;
-    private manualTradeService;
     private executionEngine;
     private telegram;
     private telegramCommander?;
