@@ -58,14 +58,13 @@ export class RiskManager {
         const candidateNotional = candidate.sizing.binanceActualNotionalUsd.plus(candidate.sizing.bybitActualNotionalUsd);
         const projectedTotalNotional = exposure.totalAggregateNotionalUsd.plus(candidateNotional);
         // If trade_margin_per_leg_usd is set (e.g. $10), aggregate limit scales with leverage (e.g. $10 * 20x * 2 legs * 1.5 buffer)
-        let maxAggregate = toDecimal(this.config.risk.maximum_aggregate_notional_usd);
-        if (this.config.risk.trade_margin_per_leg_usd && this.config.risk.trade_margin_per_leg_usd > 0) {
-            const dynamicLimit = toDecimal(this.config.risk.trade_margin_per_leg_usd)
-                .times(candidate.sizing.appliedLeverage || 20)
-                .times('3.0'); // 3.0x covers both legs plus safety buffer
-            if (dynamicLimit.greaterThan(maxAggregate)) {
-                maxAggregate = dynamicLimit;
-            }
+        let maxAggregate = toDecimal(this.config.risk.maximum_aggregate_notional_usd || 3000);
+        const marginPerLeg = toDecimal(this.config.risk.trade_margin_per_leg_usd || 10);
+        const dynamicLimit = marginPerLeg
+            .times(candidate.sizing.appliedLeverage || 20)
+            .times('3.0'); // 3.0x covers both legs plus safety buffer
+        if (dynamicLimit.greaterThan(maxAggregate)) {
+            maxAggregate = dynamicLimit;
         }
         if (projectedTotalNotional.greaterThan(maxAggregate)) {
             throw new RiskLimitViolationError('MAX_AGGREGATE_NOTIONAL', `Projected aggregate notional $${projectedTotalNotional.toFixed(2)} exceeds maximum allowed $${maxAggregate.toFixed(2)}`);

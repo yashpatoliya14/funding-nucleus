@@ -209,9 +209,24 @@ export class FundingArbitrageApp {
         const activeTrades = this.tradeRepo.getActiveTrades();
         if (activeTrades.length > 0) {
             logger.warn({ count: activeTrades.length }, 'Found active/unresolved trades in SQLite on startup');
-            for (const t of activeTrades) {
-                logger.warn({ tradeId: t.id, coin: t.coin, state: t.state }, 'Reconciling unresolved trade on startup');
-                await this.telegram.sendAlert('Restart Recovery Alert', `Bot restarted with unresolved trade ${t.id} (${t.coin}) in state ${t.state}`, 'WARN');
+            const [binancePositions, bybitPositions] = await Promise.allSettled([
+                this.binanceClient.getPositions(),
+                this.bybitClient.getPositions(),
+            ]);
+            const hasBinanceOpen = binancePositions.status === 'fulfilled' && binancePositions.value.some((p) => p.side !== 'FLAT' && !p.quantity.isZero());
+            const hasBybitOpen = bybitPositions.status === 'fulfilled' && bybitPositions.value.some((p) => p.side !== 'FLAT' && !p.quantity.isZero());
+            if (!hasBinanceOpen && !hasBybitOpen) {
+                for (const t of activeTrades) {
+                    logger.warn({ tradeId: t.id, coin: t.coin, state: t.state }, 'Auto-resolving stale SQLite trade (exchanges are flat)');
+                    this.tradeRepo.update({ id: t.id, state: 'COMPLETED', error_message: 'Cleaned up on startup: exchange positions are flat' });
+                }
+                logger.info('Successfully cleared stale SQLite trade records; trading slot freed');
+            }
+            else {
+                for (const t of activeTrades) {
+                    logger.warn({ tradeId: t.id, coin: t.coin, state: t.state }, 'Reconciling unresolved trade on startup with open positions');
+                    await this.telegram.sendAlert('Restart Recovery Alert', `Bot restarted with active exchange positions and unresolved trade ${t.id} (${t.coin}) in state ${t.state}`, 'WARN');
+                }
             }
         }
         else {
@@ -277,25 +292,34 @@ export class FundingArbitrageApp {
                         bRate: topOpp.binanceRate.toString(),
                         byRate: topOpp.bybitRate.toString(),
                     }, 'Top funding opportunity detected');
-                    // Evaluate top candidates in descending order of spread to find an approved candidate in the entry window
+                    // 1. Filter opportunities currently within their active entry window (e.g. 10m before funding)
+                    const inWindowCandidates = opportunities.filter((opp) => FundingScheduler.isWithinEntryWindow(opp.targetFundingTimeMs, this.config.appConfig.strategy.entry_lead_minutes));
                     let approvedCandidate = null;
-                    const candidatesToEvaluate = opportunities.slice(0, 5);
-                    for (const opp of candidatesToEvaluate) {
-                        const inWindow = FundingScheduler.isWithinEntryWindow(opp.targetFundingTimeMs, this.config.appConfig.strategy.entry_lead_minutes);
-                        if (inWindow) {
-                            logger.info({ coin: opp.mapping.normalized_symbol }, 'Opportunity is within entry window! Evaluating candidate...');
-                            const evaluated = await this.opportunityFilter.evaluateOpportunity(opp);
-                            if (evaluated.isApproved) {
-                                approvedCandidate = evaluated;
-                                break;
+                    if (inWindowCandidates.length > 0) {
+                        logger.info({ count: inWindowCandidates.length }, 'Found opportunities in active entry window! Evaluating candidates...');
+                        for (const opp of inWindowCandidates.slice(0, 15)) {
+                            try {
+                                const evaluated = await this.opportunityFilter.evaluateOpportunity(opp);
+                                if (evaluated.isApproved) {
+                                    approvedCandidate = evaluated;
+                                    break;
+                                }
+                                else {
+                                    logger.info({ coin: opp.mapping.normalized_symbol, reason: evaluated.rejectionReason }, 'In-window opportunity rejected by filter');
+                                }
                             }
-                            else {
-                                logger.info({ coin: opp.mapping.normalized_symbol, reason: evaluated.rejectionReason }, 'Opportunity filter rejected candidate');
+                            catch (evalErr) {
+                                logger.warn({ coin: opp.mapping.normalized_symbol, err: evalErr?.message }, 'Error evaluating in-window opportunity');
                             }
                         }
-                        else {
-                            const msRemaining = FundingScheduler.msUntilEntryWindow(opp.targetFundingTimeMs, this.config.appConfig.strategy.entry_lead_minutes);
-                            logger.debug({ coin: opp.mapping.normalized_symbol, minutesRemaining: (msRemaining / 60000).toFixed(1) }, 'Opportunity waiting for entry window');
+                    }
+                    else {
+                        // Find closest upcoming funding settlement
+                        const upcoming = opportunities.filter((opp) => opp.targetFundingTimeMs > Date.now());
+                        if (upcoming.length > 0) {
+                            const soonest = upcoming.reduce((min, o) => o.targetFundingTimeMs < min.targetFundingTimeMs ? o : min, upcoming[0]);
+                            const msRemaining = FundingScheduler.msUntilEntryWindow(soonest.targetFundingTimeMs, this.config.appConfig.strategy.entry_lead_minutes);
+                            logger.debug({ coin: soonest.mapping.normalized_symbol, minutesUntilWindow: (msRemaining / 60000).toFixed(1) }, 'Waiting for next funding entry window');
                         }
                     }
                     if (approvedCandidate) {
@@ -307,8 +331,18 @@ export class FundingArbitrageApp {
                             await sleep(15000);
                             continue;
                         }
-                        // Pre-trade risk check
-                        await this.riskManager.validatePreTrade(evaluated);
+                        // Pre-trade risk check with clear telegram alert on failure
+                        try {
+                            await this.riskManager.validatePreTrade(evaluated);
+                        }
+                        catch (riskErr) {
+                            logger.warn({ coin, err: riskErr?.message }, 'Pre-trade risk check rejected candidate');
+                            await this.telegram.sendMessage(`⚠️ *Trade Entry Blocked by Risk Guard: ${coin}*\n` +
+                                `• Reason: \`${riskErr?.message || riskErr}\`\n` +
+                                `• Will re-evaluate on next scan cycle.`);
+                            await sleep(15000);
+                            continue;
+                        }
                         // Build Top 10 funding spread snapshot text before entering
                         const top10 = opportunities.slice(0, 10);
                         const top10Lines = top10.map((opp, idx) => {

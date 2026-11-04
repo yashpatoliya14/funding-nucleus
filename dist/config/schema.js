@@ -84,18 +84,19 @@ export const AppConfigSchema = z.object({
     risk: z
         .object({
         default_leverage_cap: z.number().positive().default(100),
-        maximum_notional_per_leg_usd: z.number().positive().default(500),
-        trade_margin_per_leg_usd: z.number().positive().optional(),
+        maximum_notional_per_leg_usd: z.number().positive().default(1500),
+        trade_margin_per_leg_usd: z.number().positive().default(10),
         maximum_concurrent_trades: z.number().int().positive().default(1),
         maximum_daily_loss_usd: z.number().positive().default(10),
-        maximum_aggregate_notional_usd: z.number().positive().default(1000),
+        maximum_aggregate_notional_usd: z.number().positive().default(3000),
     })
         .default({
         default_leverage_cap: 100,
-        maximum_notional_per_leg_usd: 500,
+        maximum_notional_per_leg_usd: 1500,
+        trade_margin_per_leg_usd: 10,
         maximum_concurrent_trades: 1,
         maximum_daily_loss_usd: 10,
-        maximum_aggregate_notional_usd: 1000,
+        maximum_aggregate_notional_usd: 3000,
     }),
     monitoring: z
         .object({

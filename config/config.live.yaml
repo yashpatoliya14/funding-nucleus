@@ -87,7 +87,10 @@ risk:
   default_leverage_cap: 100
 
   # Dollar exposure per single leg (e.g., $50 on Binance, $50 on Bybit)
-  maximum_notional_per_leg_usd: 50.0
+  trade_margin_per_leg_usd: 10.0
+
+  # Dollar exposure per single leg (scaled for highest leverage)
+  maximum_notional_per_leg_usd: 1500.0
 
   # Maximum number of simultaneous active arbitrage pairs
   maximum_concurrent_trades: 1
@@ -96,7 +99,7 @@ risk:
   maximum_daily_loss_usd: 10.0
 
   # Maximum total portfolio notional across all legs ($50 Binance + $50 Bybit = $100 total)
-  maximum_aggregate_notional_usd: 100.0
+  maximum_aggregate_notional_usd: 3000.0
 
 monitoring:
   # Set to true once you set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in .env

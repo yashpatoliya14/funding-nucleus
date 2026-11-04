@@ -53,7 +53,7 @@ export declare const AppConfigSchema: z.ZodObject<{
     risk: z.ZodDefault<z.ZodObject<{
         default_leverage_cap: z.ZodDefault<z.ZodNumber>;
         maximum_notional_per_leg_usd: z.ZodDefault<z.ZodNumber>;
-        trade_margin_per_leg_usd: z.ZodOptional<z.ZodNumber>;
+        trade_margin_per_leg_usd: z.ZodDefault<z.ZodNumber>;
         maximum_concurrent_trades: z.ZodDefault<z.ZodNumber>;
         maximum_daily_loss_usd: z.ZodDefault<z.ZodNumber>;
         maximum_aggregate_notional_usd: z.ZodDefault<z.ZodNumber>;

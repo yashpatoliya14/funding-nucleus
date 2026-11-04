@@ -748,12 +748,19 @@ export class TelegramCommander {
             let topOpp = opps[0];
             let evaluated = null;
             let candidateRank = 1;
+            // Prioritize candidates currently in the active entry window, then sort by highest edge
+            const inWindowOpps = opps.filter((o) => {
+                const targetTime = o.targetFundingTimeMs || o.nextFundingTimeMs || 0;
+                const msRemaining = targetTime - this.entryLeadMinutes * 60 * 1000 - Date.now();
+                return msRemaining <= 0 && targetTime - 60000 > Date.now();
+            });
+            const poolToScan = inWindowOpps.length > 0 ? inWindowOpps : opps;
             if (this.evaluateOpportunity) {
-                for (let i = 0; i < Math.min(5, opps.length); i++) {
+                for (let i = 0; i < Math.min(15, poolToScan.length); i++) {
                     try {
-                        const evalResult = await this.evaluateOpportunity(opps[i]);
+                        const evalResult = await this.evaluateOpportunity(poolToScan[i]);
                         if (evalResult && evalResult.isApproved) {
-                            topOpp = opps[i];
+                            topOpp = poolToScan[i];
                             evaluated = evalResult;
                             candidateRank = i + 1;
                             break;
@@ -816,19 +823,22 @@ export class TelegramCommander {
                     ].join('\n');
                 }
                 if (evaluated.isApproved) {
-                    statusText = '🟢 Approved & Scheduled for Entry';
+                    statusText = msUntilEntry === 0
+                        ? '🔥 *IN ENTRY WINDOW — Executing Automatically!*'
+                        : `🟢 *Approved — Standing by (Automatic punch in ${entryStr})*`;
                 }
                 else {
                     statusText = `🔴 Rejection Reason: \`${evaluated.rejectionReason || 'Profit below threshold'}\``;
                 }
             }
             const msg = [
-                `🎯 *Upcoming Candidate:* \`#${candidateRank} ${parsed.coin}\``,
+                `🎯 *Next Trade Plan Candidate:* \`#${candidateRank} ${parsed.coin}\``,
                 `• *Spread:* \`+${parsed.spreadPct}%\` (${parsed.aprPct}% APR)`,
                 `• *Binance:* \`${bSign}${parsed.bRatePct}%\` | *Bybit:* \`${bySign}${parsed.byRatePct}%\``,
                 `• *Status:* ${statusText}`,
                 `• *Entry Window Opens:* in \`${entryStr}\``,
                 `• *Funding Settlement:* in \`${settlementStr}\``,
+                `• *Execution:* \`100% Autonomous — market orders punch automatically at 0s\``,
                 sizingText,
                 profitText,
             ].filter(Boolean).join('\n');
