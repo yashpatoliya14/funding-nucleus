@@ -13,7 +13,7 @@ export class TelegramCommander {
     telegramNotifier;
     getOpportunitiesSnapshot;
     evaluateOpportunity;
-    entryLeadMinutes = 10;
+    entryLeadMinutes = 480;
     marginPerLegUsd = 10;
     defaultLeverageCap = 100;
     minFundingEdgePct = 0.08;
@@ -40,7 +40,7 @@ export class TelegramCommander {
         this.telegramNotifier = options.telegramNotifier;
         this.getOpportunitiesSnapshot = options.getOpportunitiesSnapshot;
         this.evaluateOpportunity = options.evaluateOpportunity;
-        this.entryLeadMinutes = options.entryLeadMinutes ?? 10;
+        this.entryLeadMinutes = options.entryLeadMinutes ?? 480;
         this.marginPerLegUsd = options.marginPerLegUsd ?? 10;
         this.defaultLeverageCap = options.defaultLeverageCap ?? 100;
         this.minFundingEdgePct = options.minFundingEdgePct ?? 0.08;
@@ -748,15 +748,16 @@ export class TelegramCommander {
             let topOpp = opps[0];
             let evaluated = null;
             let candidateRank = 1;
-            // Prioritize candidates currently in the active entry window, then sort by highest edge
+            // Prioritize candidates currently in the active entry window (continuous 8h cycle), then sort by highest edge
+            const effectiveLead = Math.max(this.entryLeadMinutes, 480);
             const inWindowOpps = opps.filter((o) => {
                 const targetTime = o.targetFundingTimeMs || o.nextFundingTimeMs || 0;
-                const msRemaining = targetTime - this.entryLeadMinutes * 60 * 1000 - Date.now();
+                const msRemaining = targetTime - effectiveLead * 60 * 1000 - Date.now();
                 return msRemaining <= 0 && targetTime - 60000 > Date.now();
             });
             const poolToScan = inWindowOpps.length > 0 ? inWindowOpps : opps;
             if (this.evaluateOpportunity) {
-                for (let i = 0; i < Math.min(15, poolToScan.length); i++) {
+                for (let i = 0; i < Math.min(30, poolToScan.length); i++) {
                     try {
                         const evalResult = await this.evaluateOpportunity(poolToScan[i]);
                         if (evalResult && evalResult.isApproved) {
@@ -785,7 +786,8 @@ export class TelegramCommander {
             const minSettlement = Math.floor((totalSecSettlement % 3600) / 60);
             const secSettlement = totalSecSettlement % 60;
             const settlementStr = hoursSettlement > 0 ? `${hoursSettlement}h ${minSettlement}m ${secSettlement}s` : `${minSettlement}m ${secSettlement}s`;
-            const msUntilEntry = Math.max(0, targetFundingTime - this.entryLeadMinutes * 60 * 1000 - now);
+            const effectiveLeadMins = Math.max(this.entryLeadMinutes, 480);
+            const msUntilEntry = Math.max(0, targetFundingTime - effectiveLeadMins * 60 * 1000 - now);
             const totalSecEntry = Math.floor(msUntilEntry / 1000);
             const hoursEntry = Math.floor(totalSecEntry / 3600);
             const minEntry = Math.floor((totalSecEntry % 3600) / 60);
@@ -822,10 +824,15 @@ export class TelegramCommander {
                         `  - Expected Net Profit: \`${netProfitStr} USDT\``,
                     ].join('\n');
                 }
+                const activeTrades = this.tradeRepo ? this.tradeRepo.getActiveTrades() : [];
+                const hasActive = activeTrades.length > 0;
+                const activeCoin = hasActive ? activeTrades[0]?.coin : '';
                 if (evaluated.isApproved) {
-                    statusText = msUntilEntry === 0
-                        ? '🔥 *IN ENTRY WINDOW — Executing Automatically!*'
-                        : `🟢 *Approved — Standing by (Automatic punch in ${entryStr})*`;
+                    statusText = hasActive
+                        ? `⏳ *Active Position Held* (${activeCoin}) — Next trade queued for settlement`
+                        : msUntilEntry === 0
+                            ? '🔥 *APPROVED — Autonomous Execution Active (Punching automatically on scan cycle)*'
+                            : `🟢 *Approved — Standing by (Automatic punch in ${entryStr})*`;
                 }
                 else {
                     statusText = `🔴 Rejection Reason: \`${evaluated.rejectionReason || 'Profit below threshold'}\``;
@@ -836,9 +843,11 @@ export class TelegramCommander {
                 `• *Spread:* \`+${parsed.spreadPct}%\` (${parsed.aprPct}% APR)`,
                 `• *Binance:* \`${bSign}${parsed.bRatePct}%\` | *Bybit:* \`${bySign}${parsed.byRatePct}%\``,
                 `• *Status:* ${statusText}`,
-                `• *Entry Window Opens:* in \`${entryStr}\``,
+                msUntilEntry === 0
+                    ? '• *Entry Window:* `🟢 Open (Immediate continuous autonomous entry)`'
+                    : `• *Entry Window Opens:* in \`${entryStr}\``,
                 `• *Funding Settlement:* in \`${settlementStr}\``,
-                `• *Execution:* \`100% Autonomous — market orders punch automatically at 0s\``,
+                '• *Execution:* `100% Autonomous — orders execute automatically when flat`',
                 sizingText,
                 profitText,
             ].filter(Boolean).join('\n');

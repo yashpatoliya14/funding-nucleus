@@ -5,7 +5,7 @@ export class FundingScheduler {
    */
   static isWithinEntryWindow(
     targetFundingTimeMs: number,
-    entryLeadMinutes: number = 10,
+    entryLeadMinutes: number = 480,
     cutoffSeconds: number = 60
   ): boolean {
     const now = Date.now();
@@ -21,7 +21,7 @@ export class FundingScheduler {
   /**
    * Returns milliseconds remaining until entry window opens.
    */
-  static msUntilEntryWindow(targetFundingTimeMs: number, entryLeadMinutes: number = 10): number {
+  static msUntilEntryWindow(targetFundingTimeMs: number, entryLeadMinutes: number = 480): number {
     const now = Date.now();
     const leadMs = entryLeadMinutes * 60 * 1000;
     const earliestEntry = targetFundingTimeMs - leadMs;

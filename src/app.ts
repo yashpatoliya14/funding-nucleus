@@ -342,12 +342,13 @@ export class FundingArbitrageApp {
       `📈 *Min Spread Entry:* \`${this.config.appConfig.strategy.minimum_funding_edge_pct}%\``,
       `🔄 *Carry Retention:* \`${this.config.appConfig.strategy.carry_min_retention_edge_pct}%\``,
       '━━━━━━━━━━━━━━━━━━━━━━━━━━',
-      '💬 *5 Bot Commands:*',
+      '💬 *6 Bot Commands:*',
       '1️⃣ /flatten — 🚨 Flatten for Emergency (100% USDT)',
-      '2️⃣ /current — 📋 Current Trade Details & Positions',
-      '3️⃣ /top10 — 📈 Top 10 Cross-Exchange Funding Spreads',
-      '4️⃣ /wallet — 💼 Binance & Bybit Balances & Margin',
-      '5️⃣ /netpnl — 💰 Today Realized Net PnL & Performance',
+      '2️⃣ /current — 📊 Current Trade Details & Positions',
+      '3️⃣ /next — 🎯 Next Trade Plan & Sizing Forecast',
+      '4️⃣ /top10 — 📈 Top 10 Cross-Exchange Funding Spreads',
+      '5️⃣ /wallet — 💼 Binance & Bybit Balances & Margin',
+      '6️⃣ /netpnl — 💰 Today Realized Net PnL & Performance',
       '━━━━━━━━━━━━━━━━━━━━━━━━━━',
       `_Scanning ${activeSymbols.length} perpetuals across Binance & Bybit..._`
     ].join('\n');
@@ -370,6 +371,27 @@ export class FundingArbitrageApp {
         // 2. Refresh symbol cache if expired
         const activeSymbols = await this.symbolCache.refreshIfExpired();
 
+        // Runtime stale trade auto-reconciliation
+        const currentActiveTrades = this.tradeRepo.getActiveTrades();
+        if (currentActiveTrades.length > 0) {
+          const [binancePos, bybitPos] = await Promise.all([
+            this.binanceClient.getPositions(),
+            this.bybitClient.getPositions(),
+          ]);
+          const hasB = binancePos.some((p) => !p.quantity.isZero());
+          const hasBy = bybitPos.some((p) => !p.quantity.isZero());
+          if (!hasB && !hasBy) {
+            logger.info('Exchanges are verified flat. Auto-reconciling stale active DB trades to COMPLETED');
+            for (const t of currentActiveTrades) {
+              this.tradeRepo.update({
+                id: t.id,
+                state: 'COMPLETED',
+                error_message: 'Cleaned up during runtime: exchanges are verified flat',
+              });
+            }
+          }
+        }
+
         // 3. Scan funding rates
         const opportunities = await this.scanner.scanOpportunities(activeSymbols);
 
@@ -387,29 +409,35 @@ export class FundingArbitrageApp {
             'Top funding opportunity detected'
           );
 
-          // 1. Filter opportunities currently within their active entry window (e.g. 10m before funding)
+          // 1. Filter opportunities currently within their active entry window.
+          // In cumulative carry mode, entry is continuous across the cycle (480m) as long as > 60s before settlement.
+          const effectiveLeadMinutes = this.config.appConfig.strategy.cumulative_carry_enabled
+            ? Math.max(this.config.appConfig.strategy.entry_lead_minutes, 480)
+            : this.config.appConfig.strategy.entry_lead_minutes;
+
           const inWindowCandidates = opportunities.filter((opp) =>
             FundingScheduler.isWithinEntryWindow(
               opp.targetFundingTimeMs,
-              this.config.appConfig.strategy.entry_lead_minutes
+              effectiveLeadMinutes,
+              60
             )
           );
 
           let approvedCandidate: any = null;
 
           if (inWindowCandidates.length > 0) {
-            logger.info({ count: inWindowCandidates.length }, 'Found opportunities in active entry window! Evaluating candidates...');
-            for (const opp of inWindowCandidates.slice(0, 15)) {
+            logger.info({ count: inWindowCandidates.length }, 'Evaluating candidate opportunities for immediate automated entry...');
+            for (const opp of inWindowCandidates.slice(0, 30)) {
               try {
                 const evaluated = await this.opportunityFilter.evaluateOpportunity(opp);
                 if (evaluated.isApproved) {
                   approvedCandidate = evaluated;
                   break;
                 } else {
-                  logger.info({ coin: opp.mapping.normalized_symbol, reason: evaluated.rejectionReason }, 'In-window opportunity rejected by filter');
+                  logger.info({ coin: opp.mapping.normalized_symbol, reason: evaluated.rejectionReason }, 'Candidate rejected by filter');
                 }
               } catch (evalErr: any) {
-                logger.warn({ coin: opp.mapping.normalized_symbol, err: evalErr?.message }, 'Error evaluating in-window opportunity');
+                logger.warn({ coin: opp.mapping.normalized_symbol, err: evalErr?.message }, 'Error evaluating candidate');
               }
             }
           } else {
@@ -419,7 +447,7 @@ export class FundingArbitrageApp {
               const soonest = upcoming.reduce((min, o) => o.targetFundingTimeMs < min.targetFundingTimeMs ? o : min, upcoming[0]!);
               const msRemaining = FundingScheduler.msUntilEntryWindow(
                 soonest.targetFundingTimeMs,
-                this.config.appConfig.strategy.entry_lead_minutes
+                effectiveLeadMinutes
               );
               logger.debug(
                 { coin: soonest.mapping.normalized_symbol, minutesUntilWindow: (msRemaining / 60000).toFixed(1) },

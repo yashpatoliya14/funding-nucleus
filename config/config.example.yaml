@@ -11,7 +11,7 @@ symbols:
   refresh_trading_status_seconds: 30
 
 strategy:
-  entry_lead_minutes: 10
+  entry_lead_minutes: 480
   target_exit_delay_seconds: 60
   minimum_net_profit_usd: 0.50
   minimum_funding_edge_pct: 0.05

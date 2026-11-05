@@ -29,7 +29,7 @@ export const AppConfigSchema = z.object({
     }),
     strategy: z
         .object({
-        entry_lead_minutes: z.number().positive().default(10),
+        entry_lead_minutes: z.number().positive().default(480),
         target_exit_delay_seconds: z.number().nonnegative().default(15),
         minimum_net_profit_usd: z.number().nonnegative().default(0.01),
         minimum_funding_edge_pct: z.number().nonnegative().default(0.08),
@@ -44,7 +44,7 @@ export const AppConfigSchema = z.object({
         max_orderbook_spread_pct: z.number().nonnegative().default(0.20),
     })
         .default({
-        entry_lead_minutes: 10,
+        entry_lead_minutes: 480,
         target_exit_delay_seconds: 15,
         minimum_net_profit_usd: 0.01,
         minimum_funding_edge_pct: 0.08,
