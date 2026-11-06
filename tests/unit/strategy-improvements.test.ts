@@ -80,12 +80,12 @@ describe('Institutional Strategy Improvements (Items 3, 6, 7, 8)', () => {
 
   describe('Item 7: Flash Mirage & Rate Stability Filter', () => {
     it('rejects candidates when orderbook bid-ask spread is wider than maximum allowed threshold', async () => {
-      // Create wide spread on Bybit (bestBid 100, bestAsk 100.50 -> 0.50% spread > 0.20% limit)
+      // Create wide spread on Bybit (bestBid 100, bestAsk 101.50 -> 1.50% spread > 0.80% limit)
       bybitClient.mockOrderBook({
         exchange: 'bybit',
         symbol: 'BTCUSDT',
         bids: [{ price: toDecimal('100.0'), quantity: toDecimal('10.0') }],
-        asks: [{ price: toDecimal('100.50'), quantity: toDecimal('10.0') }],
+        asks: [{ price: toDecimal('101.50'), quantity: toDecimal('10.0') }],
         timestampMs: Date.now(),
       });
 
@@ -107,6 +107,15 @@ describe('Institutional Strategy Improvements (Items 3, 6, 7, 8)', () => {
     });
 
     it('rejects candidates when 7-day edge consistency is below the minimum stability threshold (flash spike)', async () => {
+      const flashConfig = {
+        ...config,
+        strategy: {
+          ...config.strategy,
+          flash_mirage_filter_enabled: true,
+          min_historical_consistency_pct: 50.0,
+        },
+      };
+
       const mockHistoryService: any = {
         getSevenDayFundingHistory: async () => ({
           symbol: 'BTCUSDT',
@@ -114,13 +123,13 @@ describe('Institutional Strategy Improvements (Items 3, 6, 7, 8)', () => {
           settlementCount: 15,
           cumulativeReturnPct: 0.1,
           averageSpreadPct: 0.01,
-          consistencyScorePct: 35.0, // Low consistency = 35% < 50% threshold!
+          consistencyScorePct: 25.0, // Low consistency = 25% < 50% threshold!
           dominantDirection: 'LONG_BINANCE_SHORT_BYBIT',
           hasStrongArbitrageEdge: false,
         }),
       };
 
-      const filter = new OpportunityFilter(binanceClient, bybitClient, config, mockHistoryService);
+      const filter = new OpportunityFilter(binanceClient, bybitClient, flashConfig, mockHistoryService);
       const opp: any = {
         mapping: { normalized_symbol: 'BTC', binance_symbol: 'BTCUSDT', bybit_symbol: 'BTCUSDT' },
         fundingDiffPct: toDecimal('0.50'),

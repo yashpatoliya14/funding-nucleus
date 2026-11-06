@@ -18,6 +18,14 @@ export declare class OpportunityFilter {
     private bybitClient;
     private config;
     private historyService?;
+    private cachedBinanceInsts;
+    private cachedBybitInsts;
+    private instsCachedAt;
+    private readonly INST_CACHE_TTL_MS;
+    private cachedBinanceBalances;
+    private cachedBybitBalances;
+    private balancesCachedAt;
+    private readonly BALANCES_CACHE_TTL_MS;
     constructor(binanceClient: IExchangeClient, bybitClient: IExchangeClient, config: AppConfig, historyService?: FundingHistoryService | undefined);
     evaluateOpportunity(opp: ScannedOpportunity): Promise<EvaluatedOpportunity>;
 }

@@ -13,6 +13,8 @@ export interface ProfitabilityInput {
     binanceOrderBook: OrderBook;
     bybitOrderBook: OrderBook;
     riskBufferUsd: Decimal;
+    makerTakerHybridEnabled?: boolean;
+    expectedHoldingCycles?: number;
 }
 export interface ProfitabilityResult {
     direction: TradeDirection;
@@ -25,6 +27,8 @@ export interface ProfitabilityResult {
     estimatedExitSlippageUsd: Decimal;
     riskBufferUsd: Decimal;
     expectedNetProfitUsd: Decimal;
+    singleCycleNetProfitUsd?: Decimal;
+    expectedHoldingCycles?: number;
     isProfitable: boolean;
     rejectionReason?: string;
 }

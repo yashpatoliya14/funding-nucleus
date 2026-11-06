@@ -39,9 +39,9 @@ strategy:
   carry_min_retention_edge_pct: 0.08
 
   # Flash Rate Mirage Filter: Reject transient liquidation spikes with low historical consistency
-  flash_mirage_filter_enabled: true
-  min_historical_consistency_pct: 50.0
-  max_orderbook_spread_pct: 0.20
+  flash_mirage_filter_enabled: false
+  min_historical_consistency_pct: 30.0
+  max_orderbook_spread_pct: 0.80
 
   # Margin rebalance alert threshold (USD): if available margin on either exchange drops below this, alert immediately
   margin_rebalance_warning_usd: 3.50

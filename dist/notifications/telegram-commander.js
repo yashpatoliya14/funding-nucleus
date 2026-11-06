@@ -757,7 +757,7 @@ export class TelegramCommander {
             });
             const poolToScan = inWindowOpps.length > 0 ? inWindowOpps : opps;
             if (this.evaluateOpportunity) {
-                for (let i = 0; i < Math.min(30, poolToScan.length); i++) {
+                for (let i = 0; i < Math.min(50, poolToScan.length); i++) {
                     try {
                         const evalResult = await this.evaluateOpportunity(poolToScan[i]);
                         if (evalResult && evalResult.isApproved) {

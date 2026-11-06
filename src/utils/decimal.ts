@@ -4,7 +4,8 @@ Decimal.set({ precision: 30, rounding: Decimal.ROUND_HALF_UP });
 
 export { Decimal };
 
-export function toDecimal(value: string | number | Decimal): Decimal {
+export function toDecimal(value: string | number | Decimal | undefined | null): Decimal {
+  if (value === undefined || value === null) return new Decimal('0');
   if (value instanceof Decimal) return value;
   return new Decimal(value);
 }

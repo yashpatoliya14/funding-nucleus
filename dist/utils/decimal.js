@@ -2,6 +2,8 @@ import { Decimal } from 'decimal.js';
 Decimal.set({ precision: 30, rounding: Decimal.ROUND_HALF_UP });
 export { Decimal };
 export function toDecimal(value) {
+    if (value === undefined || value === null)
+        return new Decimal('0');
     if (value instanceof Decimal)
         return value;
     return new Decimal(value);

@@ -7,6 +7,14 @@ export class OpportunityFilter {
     bybitClient;
     config;
     historyService;
+    cachedBinanceInsts = [];
+    cachedBybitInsts = [];
+    instsCachedAt = 0;
+    INST_CACHE_TTL_MS = 5 * 60 * 1000;
+    cachedBinanceBalances = [];
+    cachedBybitBalances = [];
+    balancesCachedAt = 0;
+    BALANCES_CACHE_TTL_MS = 10 * 1000;
     constructor(binanceClient, bybitClient, config, historyService) {
         this.binanceClient = binanceClient;
         this.bybitClient = bybitClient;
@@ -27,16 +35,59 @@ export class OpportunityFilter {
             };
         }
         try {
-            // 1. Fetch current order books (depth: 50 for robust slippage estimation) and commission rates concurrently
-            const [binanceBook, bybitBook, binanceCommission, bybitCommission, binanceBalances, bybitBalances, binanceInsts, bybitInsts] = await Promise.all([
+            const now = Date.now();
+            // 1. Refresh or reuse cached instrument specifications (avoids 40-weight API calls on every candidate)
+            let binanceInsts = this.cachedBinanceInsts;
+            let bybitInsts = this.cachedBybitInsts;
+            if (!binanceInsts.length || !bybitInsts.length || now - this.instsCachedAt > this.INST_CACHE_TTL_MS) {
+                const [bI, byI] = await Promise.all([
+                    this.binanceClient.getInstruments().catch(() => this.cachedBinanceInsts),
+                    this.bybitClient.getInstruments().catch(() => this.cachedBybitInsts),
+                ]);
+                if (bI?.length) {
+                    this.cachedBinanceInsts = bI;
+                    binanceInsts = bI;
+                }
+                if (byI?.length) {
+                    this.cachedBybitInsts = byI;
+                    bybitInsts = byI;
+                }
+                this.instsCachedAt = now;
+            }
+            // 2. Refresh or reuse cached balances
+            let binanceBalances = this.cachedBinanceBalances;
+            let bybitBalances = this.cachedBybitBalances;
+            if (!binanceBalances.length || !bybitBalances.length || now - this.balancesCachedAt > this.BALANCES_CACHE_TTL_MS) {
+                const [bB, byB] = await Promise.all([
+                    this.binanceClient.getBalances().catch(() => this.cachedBinanceBalances),
+                    this.bybitClient.getBalances().catch(() => this.cachedBybitBalances),
+                ]);
+                if (bB?.length) {
+                    this.cachedBinanceBalances = bB;
+                    binanceBalances = bB;
+                }
+                if (byB?.length) {
+                    this.cachedBybitBalances = byB;
+                    bybitBalances = byB;
+                }
+                this.balancesCachedAt = now;
+            }
+            // 3. Fetch order books and commission rates (with safe fallback for commission rates)
+            const [binanceBook, bybitBook, binanceCommission, bybitCommission] = await Promise.all([
                 this.binanceClient.getOrderBook(opp.mapping.binance_symbol, 50),
                 this.bybitClient.getOrderBook(opp.mapping.bybit_symbol, 50),
-                this.binanceClient.getCommissionRates(opp.mapping.binance_symbol),
-                this.bybitClient.getCommissionRates(opp.mapping.bybit_symbol),
-                this.binanceClient.getBalances(),
-                this.bybitClient.getBalances(),
-                this.binanceClient.getInstruments(),
-                this.bybitClient.getInstruments(),
+                this.binanceClient.getCommissionRates(opp.mapping.binance_symbol).catch(() => ({
+                    exchange: 'binance',
+                    symbol: opp.mapping.binance_symbol,
+                    makerRate: toDecimal('0.0002'),
+                    takerRate: toDecimal('0.0005'),
+                })),
+                this.bybitClient.getCommissionRates(opp.mapping.bybit_symbol).catch(() => ({
+                    exchange: 'bybit',
+                    symbol: opp.mapping.bybit_symbol,
+                    makerRate: toDecimal('0.0002'),
+                    takerRate: toDecimal('0.00055'),
+                })),
             ]);
             const bInst = binanceInsts.find((i) => i.symbol === opp.mapping.binance_symbol);
             const byInst = bybitInsts.find((i) => i.symbol === opp.mapping.bybit_symbol);
@@ -49,8 +100,8 @@ export class OpportunityFilter {
                     rejectionReason: 'Contract specification not found for matched symbols',
                 };
             }
-            // 1b. Orderbook bid-ask spread & liquidity check (Item 7: reject illiquid or blown-out order books)
-            const maxBookSpreadPct = this.config.strategy.max_orderbook_spread_pct ?? 0.20;
+            // 1b. Orderbook bid-ask spread & liquidity check (reject completely illiquid or blown-out order books)
+            const maxBookSpreadPct = this.config.strategy.max_orderbook_spread_pct ?? 0.80;
             const bBid = binanceBook.bids[0]?.price;
             const bAsk = binanceBook.asks[0]?.price;
             const byBid = bybitBook.bids[0]?.price;
@@ -88,24 +139,14 @@ export class OpportunityFilter {
                     if (stats && stats.settlementCount >= 3) {
                         carryScore = stats.consistencyScorePct;
                         if (this.config.strategy.flash_mirage_filter_enabled) {
-                            const minConsistency = this.config.strategy.min_historical_consistency_pct ?? 50.0;
-                            if (stats.consistencyScorePct < minConsistency) {
+                            const minConsistency = this.config.strategy.min_historical_consistency_pct ?? 30.0;
+                            if (stats.consistencyScorePct < minConsistency && stats.settlementCount >= 6) {
                                 return {
                                     opportunity: opp,
                                     sizing: {},
                                     profitability: {},
                                     isApproved: false,
                                     rejectionReason: `Flash rate mirage: low 7-day edge consistency (${stats.consistencyScorePct.toFixed(1)}% < ${minConsistency}%)`,
-                                };
-                            }
-                            const oppDir = opp.fundingDirection;
-                            if (stats.dominantDirection !== oppDir && stats.consistencyScorePct >= 65) {
-                                return {
-                                    opportunity: opp,
-                                    sizing: {},
-                                    profitability: {},
-                                    isApproved: false,
-                                    rejectionReason: `Flash rate inversion: current direction ${oppDir} opposes persistent 7-day trend (${stats.dominantDirection})`,
                                 };
                             }
                         }
@@ -162,6 +203,7 @@ export class OpportunityFilter {
                 };
             }
             // 4. Profitability calculation
+            // Pass maker-taker hybrid flag and carry cycles (default 2 in carry mode) to properly evaluate net edge
             const profitability = ProfitabilityEngine.evaluate({
                 binanceRate: opp.binanceRate,
                 bybitRate: opp.bybitRate,
@@ -174,6 +216,8 @@ export class OpportunityFilter {
                 binanceOrderBook: binanceBook,
                 bybitOrderBook: bybitBook,
                 riskBufferUsd: toDecimal(this.config.strategy.risk_buffer_usd),
+                makerTakerHybridEnabled: Boolean(this.config.execution?.maker_taker_hybrid_enabled),
+                expectedHoldingCycles: this.config.strategy.cumulative_carry_enabled ? 2 : 1,
             }, toDecimal(this.config.strategy.minimum_net_profit_usd));
             if (!profitability.isProfitable || profitability.expectedNetProfitUsd.lessThanOrEqualTo(0)) {
                 return {

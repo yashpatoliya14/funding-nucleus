@@ -12,9 +12,12 @@ export class ProfitabilityEngine {
         const bybitEntrySide = fundingFlow.direction === 'SHORT_BINANCE_LONG_BYBIT' ? 'BUY' : 'SELL';
         const binanceExitSide = binanceEntrySide === 'BUY' ? 'SELL' : 'BUY';
         const bybitExitSide = bybitEntrySide === 'BUY' ? 'SELL' : 'BUY';
-        // 2. Entry fees (taker rate applied to intended notional)
+        // 2. Entry fees (if maker-taker hybrid enabled, Bybit leg is placed as post-only maker)
+        const bybitEntryRate = input.makerTakerHybridEnabled && input.bybitCommission.makerRate
+            ? input.bybitCommission.makerRate
+            : input.bybitCommission.takerRate;
         const binanceEntryFee = input.binanceNotionalUsd.times(input.binanceCommission.takerRate);
-        const bybitEntryFee = input.bybitNotionalUsd.times(input.bybitCommission.takerRate);
+        const bybitEntryFee = input.bybitNotionalUsd.times(bybitEntryRate);
         const totalEntryFees = binanceEntryFee.plus(bybitEntryFee);
         // 3. Exit fees (taker rate applied to expected exit notional)
         const binanceExitFee = input.binanceNotionalUsd.times(input.binanceCommission.takerRate);
@@ -49,14 +52,21 @@ export class ProfitabilityEngine {
         const bExitSlippageUsd = input.binanceNotionalUsd.times(bExitEstimate.slippageBps).dividedBy('10000');
         const byExitSlippageUsd = input.bybitNotionalUsd.times(byExitEstimate.slippageBps).dividedBy('10000');
         const totalExitSlippageUsd = bExitSlippageUsd.plus(byExitSlippageUsd);
-        // 5. Expected Net Profit Formula
-        // expected_net_profit = net_funding - entry_fees - exit_fees - entry_slippage - exit_slippage - risk_buffer
+        // 5. Total trading costs (entry fees + exit fees + entry/exit slippage + risk buffer)
         const totalCosts = totalEntryFees
             .plus(totalExitFees)
             .plus(totalEntrySlippageUsd)
             .plus(totalExitSlippageUsd)
             .plus(input.riskBufferUsd);
-        const expectedNetProfit = fundingFlow.netFundingCashFlow.minus(totalCosts);
+        // 6. Expected Net Profit Formula
+        // In cumulative carry mode, holding across multi-cycle funding periods (default: 2 cycles)
+        // amortizes entry and exit trading fees across the entire holding duration.
+        const cycles = input.expectedHoldingCycles && input.expectedHoldingCycles > 1
+            ? input.expectedHoldingCycles
+            : 1;
+        const totalFundingCashFlow = fundingFlow.netFundingCashFlow.times(cycles);
+        const expectedNetProfit = totalFundingCashFlow.minus(totalCosts);
+        const singleCycleNetProfit = fundingFlow.netFundingCashFlow.minus(totalCosts);
         const isProfitable = expectedNetProfit.greaterThanOrEqualTo(minNetProfitUsd);
         return {
             direction: fundingFlow.direction,
@@ -69,10 +79,12 @@ export class ProfitabilityEngine {
             estimatedExitSlippageUsd: totalExitSlippageUsd,
             riskBufferUsd: input.riskBufferUsd,
             expectedNetProfitUsd: expectedNetProfit,
+            singleCycleNetProfitUsd: singleCycleNetProfit,
+            expectedHoldingCycles: cycles,
             isProfitable,
             rejectionReason: isProfitable
                 ? undefined
-                : `Expected net profit $${expectedNetProfit.toFixed(4)} is below minimum required $${minNetProfitUsd.toFixed(4)}`,
+                : `Expected net profit $${expectedNetProfit.toFixed(4)} (${cycles}-cycle carry) is below minimum required $${minNetProfitUsd.toFixed(4)}`,
         };
     }
 }

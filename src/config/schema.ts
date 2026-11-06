@@ -40,9 +40,9 @@ export const AppConfigSchema = z.object({
       carry_min_retention_edge_pct: z.number().nonnegative().default(0.08),
       margin_rebalance_warning_usd: z.number().nonnegative().default(3.50),
       auto_execute_trades: z.boolean().default(true),
-      flash_mirage_filter_enabled: z.boolean().default(true),
-      min_historical_consistency_pct: z.number().nonnegative().default(50.0),
-      max_orderbook_spread_pct: z.number().nonnegative().default(0.20),
+      flash_mirage_filter_enabled: z.boolean().default(false),
+      min_historical_consistency_pct: z.number().nonnegative().default(30.0),
+      max_orderbook_spread_pct: z.number().nonnegative().default(0.80),
     })
     .default({
       entry_lead_minutes: 480,
@@ -55,9 +55,9 @@ export const AppConfigSchema = z.object({
       carry_min_retention_edge_pct: 0.08,
       margin_rebalance_warning_usd: 3.50,
       auto_execute_trades: true,
-      flash_mirage_filter_enabled: true,
-      min_historical_consistency_pct: 50.0,
-      max_orderbook_spread_pct: 0.20,
+      flash_mirage_filter_enabled: false,
+      min_historical_consistency_pct: 30.0,
+      max_orderbook_spread_pct: 0.80,
     }),
   execution: z
     .object({

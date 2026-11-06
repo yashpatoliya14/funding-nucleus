@@ -322,7 +322,7 @@ export class FundingArbitrageApp {
                     let approvedCandidate = null;
                     if (inWindowCandidates.length > 0) {
                         logger.info({ count: inWindowCandidates.length }, 'Evaluating candidate opportunities for immediate automated entry...');
-                        for (const opp of inWindowCandidates.slice(0, 30)) {
+                        for (const opp of inWindowCandidates.slice(0, 50)) {
                             try {
                                 const evaluated = await this.opportunityFilter.evaluateOpportunity(opp);
                                 if (evaluated.isApproved) {

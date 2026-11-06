@@ -11,8 +11,10 @@ export class PositionSizer {
         }
         // Raw quantities needed for target notional
         // Qty = TargetNotional / (Price * contractMultiplier)
-        const rawBQty = targetNotional.dividedBy(bPrice.times(binanceInst.contractMultiplier));
-        const rawByQty = targetNotional.dividedBy(byPrice.times(bybitInst.contractMultiplier));
+        const bMultiplier = binanceInst.contractMultiplier ? toDecimal(binanceInst.contractMultiplier) : toDecimal('1');
+        const byMultiplier = bybitInst.contractMultiplier ? toDecimal(bybitInst.contractMultiplier) : toDecimal('1');
+        const rawBQty = targetNotional.dividedBy(bPrice.times(bMultiplier));
+        const rawByQty = targetNotional.dividedBy(byPrice.times(byMultiplier));
         // Round conservatively to step size
         const bQty = roundToStep(rawBQty, binanceInst.quantityStep);
         const byQty = roundToStep(rawByQty, bybitInst.quantityStep);
@@ -24,8 +26,8 @@ export class PositionSizer {
             throw new RiskLimitViolationError('MIN_QUANTITY_BYBIT', `Calculated Bybit quantity ${byQty} is less than minimum ${bybitInst.minQuantity}`);
         }
         // Actual USD notionals
-        const bActualNotional = bQty.times(bPrice).times(binanceInst.contractMultiplier);
-        const byActualNotional = byQty.times(byPrice).times(bybitInst.contractMultiplier);
+        const bActualNotional = bQty.times(bPrice).times(bMultiplier);
+        const byActualNotional = byQty.times(byPrice).times(byMultiplier);
         // Calculate percentage mismatch relative to target notional
         const notionalDiff = bActualNotional.minus(byActualNotional).abs();
         const mismatchPct = notionalDiff.dividedBy(targetNotional).times('100');
