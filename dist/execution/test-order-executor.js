@@ -27,13 +27,14 @@ export async function executeTestOrder(exchange, options = {}) {
     const refPrice = side === 'BUY' ? bestAsk : bestBid;
     // Calculate minimum valid order quantity
     // Must satisfy: qty >= minQuantity AND qty * price >= minNotional (typically $5 on Binance, $1 on Bybit)
+    const multiplier = inst.contractMultiplier ? toDecimal(inst.contractMultiplier) : toDecimal('1');
     const minNotional = inst.minNotional && inst.minNotional.gt(0) ? inst.minNotional : toDecimal('5.5');
-    const rawQtyFromNotional = minNotional.times('1.05').dividedBy(refPrice.times(inst.contractMultiplier));
+    const rawQtyFromNotional = minNotional.times('1.05').dividedBy(refPrice.times(multiplier));
     let qty = roundToStep(rawQtyFromNotional, inst.quantityStep);
     if (qty.lt(inst.minQuantity)) {
         qty = inst.minQuantity;
     }
-    const notionalUsd = qty.times(refPrice).times(inst.contractMultiplier).toFixed(2);
+    const notionalUsd = qty.times(refPrice).times(multiplier).toFixed(2);
     const clientOrderId = `test_${exchange.exchangeName.slice(0, 2)}_${Date.now()}`;
     // 1. Submit test market entry order
     const entryResult = await exchange.placeMarketOrder({
@@ -73,6 +74,24 @@ export async function executeTestOrder(exchange, options = {}) {
         }
         catch (closeErr) {
             summary.closeStatus = `Close error: ${closeErr?.message || closeErr}`;
+        }
+        // Residual exposure check & zero-flat guarantee
+        try {
+            const positions = await exchange.getPositions();
+            const openPos = positions.find((p) => p.symbol === symbol && p.quantity.gt(0));
+            if (openPos && openPos.quantity.gt(0)) {
+                await exchange.placeMarketOrder({
+                    clientOrderId: `test_cleanup_${Date.now()}`,
+                    symbol,
+                    side: openPos.side === 'LONG' ? 'SELL' : 'BUY',
+                    orderType: 'MARKET',
+                    quantity: openPos.quantity,
+                    reduceOnly: true,
+                });
+            }
+        }
+        catch {
+            // Non-fatal safety check
         }
     }
     return summary;
