@@ -314,14 +314,12 @@ export class FundingArbitrageApp {
                         byRate: topOpp.bybitRate.toString(),
                     }, 'Top funding opportunity detected');
                     // 1. Filter opportunities currently within their active entry window.
-                    // In cumulative carry mode, entry is continuous across the cycle (480m) as long as > 60s before settlement.
-                    const effectiveLeadMinutes = this.config.appConfig.strategy.cumulative_carry_enabled
-                        ? Math.max(this.config.appConfig.strategy.entry_lead_minutes, 480)
-                        : this.config.appConfig.strategy.entry_lead_minutes;
-                    const inWindowCandidates = opportunities.filter((opp) => FundingScheduler.isWithinEntryWindow(opp.targetFundingTimeMs, effectiveLeadMinutes, 60));
+                    // Strict timing: Only punch within the configured lead window (2.5m = 2m30s before funding settlement).
+                    const effectiveLeadMinutes = this.config.appConfig.strategy.entry_lead_minutes;
+                    const inWindowCandidates = opportunities.filter((opp) => FundingScheduler.isWithinEntryWindow(opp.targetFundingTimeMs, effectiveLeadMinutes, 20));
                     let approvedCandidate = null;
                     if (inWindowCandidates.length > 0) {
-                        logger.info({ count: inWindowCandidates.length }, 'Evaluating candidate opportunities for immediate automated entry...');
+                        logger.info({ count: inWindowCandidates.length }, 'Evaluating candidate opportunities in 2m30s funding entry window...');
                         for (const opp of inWindowCandidates.slice(0, 50)) {
                             try {
                                 const evaluated = await this.opportunityFilter.evaluateOpportunity(opp);
@@ -344,7 +342,14 @@ export class FundingArbitrageApp {
                         if (upcoming.length > 0) {
                             const soonest = upcoming.reduce((min, o) => o.targetFundingTimeMs < min.targetFundingTimeMs ? o : min, upcoming[0]);
                             const msRemaining = FundingScheduler.msUntilEntryWindow(soonest.targetFundingTimeMs, effectiveLeadMinutes);
-                            logger.debug({ coin: soonest.mapping.normalized_symbol, minutesUntilWindow: (msRemaining / 60000).toFixed(1) }, 'Waiting for next funding entry window');
+                            const minLeft = Math.floor(msRemaining / 60000);
+                            const secLeft = Math.floor((msRemaining % 60000) / 1000);
+                            logger.info({
+                                coin: soonest.mapping.normalized_symbol,
+                                timeUntilWindow: `${minLeft}m ${secLeft}s`,
+                                entryWindowLead: `${effectiveLeadMinutes}m (2m30s)`,
+                                settlementIn: `${Math.floor((soonest.targetFundingTimeMs - Date.now()) / 60000)}m`,
+                            }, 'Standing by: Waiting for funding entry window (opens 2m 30s before settlement)');
                         }
                     }
                     if (approvedCandidate) {
@@ -426,7 +431,7 @@ export class FundingArbitrageApp {
                             `• *Est. Trading Fees (Entry+Exit):* \`-$${estFees}\``,
                             `• *Est. Slippage Cost:* \`-$${estSlippage}\``,
                             `• *Expected Net PnL:* \`+$${netProfitUsd}\``,
-                            `• *Target Settlement In:* \`~${this.config.appConfig.strategy.entry_lead_minutes} minutes\``,
+                            `• *Target Settlement In:* \`~${this.config.appConfig.strategy.entry_lead_minutes} minutes (2m 30s)\``,
                             '',
                             `📋 *Top 10 Funding Spreads At Time of Entry:*`,
                             top10Lines.join('\n'),

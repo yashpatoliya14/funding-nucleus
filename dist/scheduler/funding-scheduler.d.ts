@@ -1,7 +1,7 @@
 export declare class FundingScheduler {
     /**
      * Determines if the current time is within the entry window.
-     * Entry window: between `entryLeadMinutes` before funding and 60 seconds before funding.
+     * Entry window: strictly between `entryLeadMinutes` (default 2.5m = 2m30s) before funding and cutoffSeconds (default 20s) before funding.
      */
     static isWithinEntryWindow(targetFundingTimeMs: number, entryLeadMinutes?: number, cutoffSeconds?: number): boolean;
     /**

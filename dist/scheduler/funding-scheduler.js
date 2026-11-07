@@ -1,9 +1,9 @@
 export class FundingScheduler {
     /**
      * Determines if the current time is within the entry window.
-     * Entry window: between `entryLeadMinutes` before funding and 60 seconds before funding.
+     * Entry window: strictly between `entryLeadMinutes` (default 2.5m = 2m30s) before funding and cutoffSeconds (default 20s) before funding.
      */
-    static isWithinEntryWindow(targetFundingTimeMs, entryLeadMinutes = 480, cutoffSeconds = 60) {
+    static isWithinEntryWindow(targetFundingTimeMs, entryLeadMinutes = 2.5, cutoffSeconds = 20) {
         const now = Date.now();
         const leadMs = entryLeadMinutes * 60 * 1000;
         const cutoffMs = cutoffSeconds * 1000;
@@ -14,7 +14,7 @@ export class FundingScheduler {
     /**
      * Returns milliseconds remaining until entry window opens.
      */
-    static msUntilEntryWindow(targetFundingTimeMs, entryLeadMinutes = 480) {
+    static msUntilEntryWindow(targetFundingTimeMs, entryLeadMinutes = 2.5) {
         const now = Date.now();
         const leadMs = entryLeadMinutes * 60 * 1000;
         const earliestEntry = targetFundingTimeMs - leadMs;

@@ -19,7 +19,7 @@ symbols:
 
 strategy:
   # Minutes before funding settlement (00:00, 08:00, 16:00 UTC) to enter position
-  entry_lead_minutes: 480
+  entry_lead_minutes: 2.5
 
   # Seconds to wait after funding settlement before initiating flat exit
   target_exit_delay_seconds: 15

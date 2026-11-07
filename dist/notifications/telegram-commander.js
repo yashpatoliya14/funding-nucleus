@@ -13,7 +13,7 @@ export class TelegramCommander {
     telegramNotifier;
     getOpportunitiesSnapshot;
     evaluateOpportunity;
-    entryLeadMinutes = 480;
+    entryLeadMinutes = 2.5;
     marginPerLegUsd = 10;
     defaultLeverageCap = 100;
     minFundingEdgePct = 0.08;
@@ -40,7 +40,7 @@ export class TelegramCommander {
         this.telegramNotifier = options.telegramNotifier;
         this.getOpportunitiesSnapshot = options.getOpportunitiesSnapshot;
         this.evaluateOpportunity = options.evaluateOpportunity;
-        this.entryLeadMinutes = options.entryLeadMinutes ?? 480;
+        this.entryLeadMinutes = options.entryLeadMinutes ?? 2.5;
         this.marginPerLegUsd = options.marginPerLegUsd ?? 10;
         this.defaultLeverageCap = options.defaultLeverageCap ?? 100;
         this.minFundingEdgePct = options.minFundingEdgePct ?? 0.08;
@@ -748,12 +748,12 @@ export class TelegramCommander {
             let topOpp = opps[0];
             let evaluated = null;
             let candidateRank = 1;
-            // Prioritize candidates currently in the active entry window (continuous 8h cycle), then sort by highest edge
-            const effectiveLead = Math.max(this.entryLeadMinutes, 480);
+            // Prioritize candidates currently in the active entry window (strictly 2m30s before settlement), then sort by highest edge
+            const effectiveLead = this.entryLeadMinutes;
             const inWindowOpps = opps.filter((o) => {
                 const targetTime = o.targetFundingTimeMs || o.nextFundingTimeMs || 0;
                 const msRemaining = targetTime - effectiveLead * 60 * 1000 - Date.now();
-                return msRemaining <= 0 && targetTime - 60000 > Date.now();
+                return msRemaining <= 0 && targetTime - 20000 > Date.now();
             });
             const poolToScan = inWindowOpps.length > 0 ? inWindowOpps : opps;
             if (this.evaluateOpportunity) {
@@ -786,7 +786,7 @@ export class TelegramCommander {
             const minSettlement = Math.floor((totalSecSettlement % 3600) / 60);
             const secSettlement = totalSecSettlement % 60;
             const settlementStr = hoursSettlement > 0 ? `${hoursSettlement}h ${minSettlement}m ${secSettlement}s` : `${minSettlement}m ${secSettlement}s`;
-            const effectiveLeadMins = Math.max(this.entryLeadMinutes, 480);
+            const effectiveLeadMins = this.entryLeadMinutes;
             const msUntilEntry = Math.max(0, targetFundingTime - effectiveLeadMins * 60 * 1000 - now);
             const totalSecEntry = Math.floor(msUntilEntry / 1000);
             const hoursEntry = Math.floor(totalSecEntry / 3600);
@@ -831,8 +831,8 @@ export class TelegramCommander {
                     statusText = hasActive
                         ? `⏳ *Active Position Held* (${activeCoin}) — Next trade queued for settlement`
                         : msUntilEntry === 0
-                            ? '🔥 *APPROVED — Autonomous Execution Active (Punching automatically on scan cycle)*'
-                            : `🟢 *Approved — Standing by (Automatic punch in ${entryStr})*`;
+                            ? '🔥 *APPROVED — In 2m30s Entry Window (Punching automatically on scan cycle)*'
+                            : `🟢 *Approved — Standing by (Automatic punch in ${entryStr} @ 2m 30s before settlement)*`;
                 }
                 else {
                     statusText = `🔴 Rejection Reason: \`${evaluated.rejectionReason || 'Profit below threshold'}\``;
@@ -844,10 +844,10 @@ export class TelegramCommander {
                 `• *Binance:* \`${bSign}${parsed.bRatePct}%\` | *Bybit:* \`${bySign}${parsed.byRatePct}%\``,
                 `• *Status:* ${statusText}`,
                 msUntilEntry === 0
-                    ? '• *Entry Window:* `🟢 Open (Immediate continuous autonomous entry)`'
-                    : `• *Entry Window Opens:* in \`${entryStr}\``,
+                    ? '• *Entry Window:* `🟢 Open (Punching orders now)`'
+                    : `• *Entry Window Opens:* in \`${entryStr}\` (at 2m 30s before settlement)`,
                 `• *Funding Settlement:* in \`${settlementStr}\``,
-                '• *Execution:* `100% Autonomous — orders execute automatically when flat`',
+                '• *Execution Timing:* `Enters strictly within 2m 30s before funding settlement`',
                 sizingText,
                 profitText,
             ].filter(Boolean).join('\n');
