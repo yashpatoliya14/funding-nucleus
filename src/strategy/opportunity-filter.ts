@@ -272,7 +272,7 @@ export class OpportunityFilter {
           binanceOrderBook: binanceBook,
           bybitOrderBook: bybitBook,
           riskBufferUsd: toDecimal(this.config.strategy.risk_buffer_usd),
-          makerTakerHybridEnabled: Boolean(this.config.execution?.maker_taker_hybrid_enabled),
+          makerTakerHybridEnabled: false,
           expectedHoldingCycles: this.config.strategy.cumulative_carry_enabled ? 2 : 1,
         },
         toDecimal(this.config.strategy.minimum_net_profit_usd)

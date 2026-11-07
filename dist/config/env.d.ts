@@ -14,7 +14,7 @@ declare const EnvSchema: z.ZodObject<{
     TRADE_MARGIN_PER_LEG_USD: z.ZodPipe<z.ZodOptional<z.ZodString>, z.ZodTransform<number | undefined, string | undefined>>;
     MAX_NOTIONAL_PER_LEG_USD: z.ZodPipe<z.ZodOptional<z.ZodString>, z.ZodTransform<number | undefined, string | undefined>>;
     LEVERAGE_CAP: z.ZodPipe<z.ZodOptional<z.ZodString>, z.ZodTransform<number | undefined, string | undefined>>;
-    AUTO_EXECUTE_TRADES: z.ZodPipe<z.ZodDefault<z.ZodString>, z.ZodTransform<boolean, string>>;
+    AUTO_EXECUTE_TRADES: z.ZodPipe<z.ZodOptional<z.ZodString>, z.ZodTransform<boolean | undefined, string | undefined>>;
     CONFIG_PATH: z.ZodDefault<z.ZodString>;
     LOG_LEVEL: z.ZodOptional<z.ZodString>;
 }, z.core.$strip>;

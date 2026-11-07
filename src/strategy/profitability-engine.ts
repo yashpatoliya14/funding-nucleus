@@ -55,12 +55,9 @@ export class ProfitabilityEngine {
     const binanceExitSide = binanceEntrySide === 'BUY' ? 'SELL' : 'BUY';
     const bybitExitSide = bybitEntrySide === 'BUY' ? 'SELL' : 'BUY';
 
-    // 2. Entry fees (if maker-taker hybrid enabled, Bybit leg is placed as post-only maker)
-    const bybitEntryRate = input.makerTakerHybridEnabled && input.bybitCommission.makerRate
-      ? input.bybitCommission.makerRate
-      : input.bybitCommission.takerRate;
+    // 2. Entry fees (pure taker rates for guaranteed parallel market execution)
     const binanceEntryFee = input.binanceNotionalUsd.times(input.binanceCommission.takerRate);
-    const bybitEntryFee = input.bybitNotionalUsd.times(bybitEntryRate);
+    const bybitEntryFee = input.bybitNotionalUsd.times(input.bybitCommission.takerRate);
     const totalEntryFees = binanceEntryFee.plus(bybitEntryFee);
 
     // 3. Exit fees (taker rate applied to expected exit notional)

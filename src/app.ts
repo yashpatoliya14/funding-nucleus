@@ -378,8 +378,8 @@ export class FundingArbitrageApp {
             this.binanceClient.getPositions(),
             this.bybitClient.getPositions(),
           ]);
-          const hasB = binancePos.some((p) => !p.quantity.isZero());
-          const hasBy = bybitPos.some((p) => !p.quantity.isZero());
+          const hasB = binancePos.some((p) => p.side !== 'FLAT' && !p.quantity.isZero());
+          const hasBy = bybitPos.some((p) => p.side !== 'FLAT' && !p.quantity.isZero());
           if (!hasB && !hasBy) {
             logger.info('Exchanges are verified flat. Auto-reconciling stale active DB trades to COMPLETED');
             for (const t of currentActiveTrades) {

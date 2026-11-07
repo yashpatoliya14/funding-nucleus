@@ -26,7 +26,7 @@ strategy:
 
   # Minimum required net profit in USD after deducting all maker/taker fees and slippage
   # Lowered to 0.05 so smaller $50 notional positions are approved to trade
-  minimum_net_profit_usd: 0.05
+  minimum_net_profit_usd: 0.00
 
   # Minimum required funding spread: 0.15% (164.25% Annualized APR) to guarantee pure profit after all fees
   minimum_funding_edge_pct: 0.08
@@ -63,7 +63,7 @@ execution:
   parallel_entry: true
 
   # Maker-Taker Hybrid: Post limit order on higher-fee exchange, fallback to parallel market if unfilled within 3s
-  maker_taker_hybrid_enabled: true
+  maker_taker_hybrid_enabled: false
   maker_timeout_seconds: 3
 
   # Safety limit: Maximum seconds allowed in unhedged state before emergency abort & flatten
@@ -76,7 +76,7 @@ execution:
   maximum_slippage_bps: 10
 
   # Maximum allowable dollar notional mismatch between the two legs (0.5%)
-  maximum_notional_mismatch_pct: 0.5
+  maximum_notional_mismatch_pct: 2.0
 
   # Exit orders MUST use reduce-only to guarantee positions never flip into opposite exposure
   reduce_only_exits: true

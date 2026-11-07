@@ -24,7 +24,7 @@ execution:
   maximum_unhedged_seconds: 10
   maximum_recovery_seconds: 15
   maximum_slippage_bps: 10
-  maximum_notional_mismatch_pct: 0.5
+  maximum_notional_mismatch_pct: 2.0
   reduce_only_exits: true
 
 risk:

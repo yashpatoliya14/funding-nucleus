@@ -36,7 +36,10 @@ const EnvSchema = z.object({
     .string()
     .optional()
     .transform((v) => (v ? parseFloat(v) : undefined)),
-  AUTO_EXECUTE_TRADES: z.string().default('false').transform((v) => v === 'true'),
+  AUTO_EXECUTE_TRADES: z
+    .string()
+    .optional()
+    .transform((v) => (v !== undefined ? v === 'true' : undefined)),
   CONFIG_PATH: z.string().default('./config/config.example.yaml'),
   LOG_LEVEL: z.string().optional(),
 });

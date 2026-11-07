@@ -98,48 +98,27 @@ export class ExecutionEngine {
                 ]);
                 logger.info({ coin, leverage: candidate.sizing.appliedLeverage }, 'Synchronized common leverage on Binance and Bybit');
             }
-            // Execute entry orders (Maker-Taker hybrid or Parallel Market)
-            let bOrder = null;
-            let byOrder = null;
-            const hybridEnabled = Boolean(this.config.execution?.maker_taker_hybrid_enabled);
-            if (hybridEnabled) {
-                logger.info({ coin }, 'Attempting Maker-Taker Hybrid execution for 0.05% alpha boost');
-                try {
-                    const byBook = await this.bybitClient.getOrderBook(bySymbol, 5);
-                    const makerPrice = bySide === 'BUY'
-                        ? byBook.bids[0]?.price
-                        : byBook.asks[0]?.price;
-                    if (makerPrice && this.bybitClient.placePostOnlyOrder) {
-                        const makerResult = await this.orderManager.executeMakerOrder(this.bybitClient, tradeId, bySymbol, bySide, candidate.sizing.bybitQuantity, makerPrice, 'ENTRY');
-                        if (makerResult.status === 'FILLED' || !makerResult.executedQuantity.isZero()) {
-                            byOrder = makerResult;
-                            try {
-                                bOrder = await this.orderManager.executeMarketOrder(this.binanceClient, tradeId, bSymbol, bSide, candidate.sizing.binanceQuantity, 'ENTRY', false);
-                                logger.info({ coin, makerExchange: 'bybit' }, '🎉 Maker-Taker hybrid fill successful! Captured maker fee rebate.');
-                            }
-                            catch (bErr) {
-                                logger.error({ err: bErr?.message, coin }, 'CRITICAL: Bybit maker filled but Binance market entry threw error! Proceeding to reconciliation/recovery');
-                            }
-                        }
-                        else {
-                            if (this.bybitClient.cancelOrder) {
-                                await this.bybitClient.cancelOrder(bySymbol, makerResult.clientOrderId, makerResult.exchangeOrderId || undefined).catch(() => { });
-                            }
-                        }
-                    }
-                }
-                catch (hybridErr) {
-                    logger.warn({ err: hybridErr?.message, coin }, 'Maker-taker attempt did not fill, falling back to guaranteed parallel market orders');
-                }
+            // Execute pure parallel concurrent MARKET entry orders (limit/maker orders eliminated)
+            logger.info({
+                coin,
+                bSymbol,
+                bySymbol,
+                bSide,
+                bySide,
+                bQty: candidate.sizing.binanceQuantity.toString(),
+                byQty: candidate.sizing.bybitQuantity.toString(),
+            }, 'Punching direct concurrent MARKET entry orders to Binance and Bybit');
+            const [bOrderResult, byOrderResult] = await Promise.allSettled([
+                this.orderManager.executeMarketOrder(this.binanceClient, tradeId, bSymbol, bSide, candidate.sizing.binanceQuantity, 'ENTRY', false),
+                this.orderManager.executeMarketOrder(this.bybitClient, tradeId, bySymbol, bySide, candidate.sizing.bybitQuantity, 'ENTRY', false),
+            ]);
+            const bOrder = bOrderResult.status === 'fulfilled' ? bOrderResult.value : null;
+            const byOrder = byOrderResult.status === 'fulfilled' ? byOrderResult.value : null;
+            if (bOrderResult.status === 'rejected') {
+                logger.error({ err: bOrderResult.reason?.message, coin }, 'Binance market entry order rejected');
             }
-            // Only execute parallel market orders if NEITHER leg was executed (clean fallback)
-            if (!bOrder && !byOrder) {
-                const [bOrderResult, byOrderResult] = await Promise.allSettled([
-                    this.orderManager.executeMarketOrder(this.binanceClient, tradeId, bSymbol, bSide, candidate.sizing.binanceQuantity, 'ENTRY', false),
-                    this.orderManager.executeMarketOrder(this.bybitClient, tradeId, bySymbol, bySide, candidate.sizing.bybitQuantity, 'ENTRY', false),
-                ]);
-                bOrder = bOrderResult.status === 'fulfilled' ? bOrderResult.value : null;
-                byOrder = byOrderResult.status === 'fulfilled' ? byOrderResult.value : null;
+            if (byOrderResult.status === 'rejected') {
+                logger.error({ err: byOrderResult.reason?.message, coin }, 'Bybit market entry order rejected');
             }
             this.reconciliation.recordFills(tradeId, bOrder, byOrder);
             // 4. Transition to ENTRY_RECONCILIATION
